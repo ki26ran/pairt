@@ -304,6 +304,10 @@ def _show_impl():
         try:
             df_extra = pd.DataFrame(extra_rows)
             df_pairs = pd.concat([df_pairs, df_extra], ignore_index=True)
+            # Deduplicate by Pair_Key (recreate since dropped)
+            df_pairs["Pair_Key"] = df_pairs["Stock1"] + "|" + df_pairs["Stock2"]
+            df_pairs = df_pairs.drop_duplicates(subset=["Pair_Key"], keep="first")
+            df_pairs = df_pairs.drop(columns=["Pair_Key"], errors="ignore")
         except Exception:
             pass
 
@@ -311,8 +315,8 @@ def _show_impl():
 
     # ── Batch optimize all pairs ──────────────────────────────
     total_pairs = len(df_pairs)
-    total_th = len(th_data)
-    st.info(f"**{total_th} configured** + **{max(0, total_pairs - total_th)} unconfigured** = **{total_pairs} total pairs** available.")
+    discovered_count = len(pairs_list) if pairs_list else 0
+    st.info(f"**{discovered_count} discovered** + **{max(0, total_pairs - discovered_count)} from thresholds** = **{total_pairs} unique pairs** ({total_th} have thresholds configured)")
     if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True):
         # Merge discovered pairs into thresholds file with default params
         with open(THRESHOLDS_FILE) as f:
