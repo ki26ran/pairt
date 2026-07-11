@@ -97,40 +97,51 @@ bet they'll converge back:
 
     st.divider()
 
-    st.subheader("The Workflow — 3 Steps")
+    st.subheader("The Workflow — 4 Steps")
     st.markdown("")
 
-    wc1, wc2, wc3 = st.columns(3)
+    wc1, wc2, wc3, wc4 = st.columns(4)
 
     with wc1:
         st.markdown("""
         <div style='background:#1a3a5c;border-radius:10px;padding:15px;text-align:center;height:200px'>
         <div style='font-size:32px;margin-bottom:8px'>🔎</div>
         <div style='font-size:14px;color:#aaa'>STEP 1</div>
-        <div style='font-size:18px;font-weight:bold;margin:4px 0'>Discover Pairs</div>
-        <div style='font-size:12px;color:#ccc'>Find cointegrated stock pairs from Nifty 100.
-        Run once, then monthly via maintenance below.</div>
+        <div style='font-size:16px;font-weight:bold;margin:4px 0'>Discover Pairs</div>
+        <div style='font-size:11px;color:#ccc'>Find cointegrated stock pairs from Nifty 100.
+        Run once, then monthly via maintenance.</div>
         </div>
         """, unsafe_allow_html=True)
 
     with wc2:
         st.markdown("""
-        <div style='background:#2a1a3a;border-radius:10px;padding:15px;text-align:center;height:200px'>
-        <div style='font-size:32px;margin-bottom:8px'>🧪</div>
+        <div style='background:#1a3a1a;border-radius:10px;padding:15px;text-align:center;height:200px'>
+        <div style='font-size:32px;margin-bottom:8px'>📊</div>
         <div style='font-size:14px;color:#aaa'>STEP 2</div>
-        <div style='font-size:18px;font-weight:bold;margin:4px 0'>Backtest & Optimize</div>
-        <div style='font-size:12px;color:#ccc'>Test entry/exit thresholds via walk-forward
-        grid search. Save the best settings for live trading.</div>
+        <div style='font-size:16px;font-weight:bold;margin:4px 0'>Backtest</div>
+        <div style='font-size:11px;color:#ccc'>Test strategies with custom parameters,
+        date range, instrument type, and max pairs.</div>
         </div>
         """, unsafe_allow_html=True)
 
     with wc3:
         st.markdown("""
+        <div style='background:#2a1a3a;border-radius:10px;padding:15px;text-align:center;height:200px'>
+        <div style='font-size:32px;margin-bottom:8px'>🧪</div>
+        <div style='font-size:14px;color:#aaa'>STEP 3</div>
+        <div style='font-size:16px;font-weight:bold;margin:4px 0'>Optimize</div>
+        <div style='font-size:11px;color:#ccc'>Walk-forward grid search to find optimal
+        entry/exit thresholds for live trading.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with wc4:
+        st.markdown("""
         <div style='background:#1a3a2a;border-radius:10px;padding:15px;text-align:center;height:200px'>
         <div style='font-size:32px;margin-bottom:8px'>📊</div>
-        <div style='font-size:14px;color:#aaa'>STEP 3</div>
-        <div style='font-size:18px;font-weight:bold;margin:4px 0'>Live Monitor</div>
-        <div style='font-size:12px;color:#ccc'>Watch open positions, P&L, and charts.
+        <div style='font-size:14px;color:#aaa'>STEP 4</div>
+        <div style='font-size:16px;font-weight:bold;margin:4px 0'>Live Monitor</div>
+        <div style='font-size:11px;color:#ccc'>Watch open positions, P&L, and charts.
         The scanner runs fully automatically.</div>
         </div>
         """, unsafe_allow_html=True)

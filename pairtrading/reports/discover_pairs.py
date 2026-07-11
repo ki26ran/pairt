@@ -61,7 +61,8 @@ def show():
         "<b>Workflow:</b> "
         "<span style='color:#1f77b4;font-weight:bold'>Step 1: Discover</span> → "
         "Step 2: Backtest → "
-        "Step 3: Monitor"
+        "Step 3: Optimize → "
+        "Step 4: Monitor"
         "</div>",
         unsafe_allow_html=True,
     )

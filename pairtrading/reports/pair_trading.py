@@ -217,14 +217,15 @@ def show():
 
 
 def _show_impl():
-    st.title("🧪 Backtest & Optimize")
-    st.markdown("Test entry/exit thresholds via walk-forward grid search. Save the best settings for live trading.")
+    st.title("🧪 Optimize")
+    st.markdown("Run walk-forward grid search to find optimal entry/exit thresholds. Save the best settings for live trading.")
     st.markdown(
         "<div style='background:#2a1a3a;border-radius:6px;padding:8px 14px;font-size:13px;color:#ccc'>"
         "<b>Workflow:</b> "
         "Step 1: Discover → "
-        "<span style='color:#1f77b4;font-weight:bold'>Step 2: Backtest</span> → "
-        "Step 3: Monitor"
+        "<span style='color:#1f77b4;font-weight:bold'>Step 2: Optimize</span> → "
+        "Step 3: Backtest → "
+        "Step 4: Monitor"
         "</div>",
         unsafe_allow_html=True,
     )

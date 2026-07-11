@@ -93,8 +93,18 @@ def _option_pnl(entry_p, exit_p, strike, direction, lot, tv_pct=0.02):
 
 
 def show():
-    st.title("Backtest")
+    st.title("📊 Backtest")
     st.markdown("Run pair trading backtest with custom parameters.")
+    st.markdown(
+        "<div style='background:#1a3a5c;border-radius:6px;padding:8px 14px;font-size:13px;color:#ccc'>"
+        "<b>Workflow:</b> "
+        "Step 1: Discover → "
+        "<span style='color:#1f77b4;font-weight:bold'>Step 2: Backtest</span> → "
+        "Step 3: Optimize → "
+        "Step 4: Monitor"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     # ── Load thresholds ────────────────────────────────────────
     th_data = {}
