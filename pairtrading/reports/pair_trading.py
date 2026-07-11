@@ -309,6 +309,24 @@ def _show_impl():
 
     st.divider()
 
+    # ── Batch optimize all unconfigured pairs ──────────────────
+    if discovered_keys:
+        unconfigured = [k for k in discovered_keys if k not in th_data]
+        if unconfigured:
+            st.info(f"{len(unconfigured)} discovered pairs without thresholds. Click below to optimize all at once.")
+            if st.button(f"⚡ Optimize All {len(unconfigured)} Pairs", type="primary", use_container_width=True):
+                from pairtrading.optimizer import run as run_optimizer
+                with st.spinner(f"Optimizing {len(unconfigured)} pairs — this may take several minutes..."):
+                    import io, contextlib
+                    buf = io.StringIO()
+                    with contextlib.redirect_stdout(buf):
+                        run_optimizer(months=6)
+                    output = buf.getvalue()
+                with st.expander("Optimizer Results", expanded=True):
+                    st.code(output[-2000:] if len(output) > 2000 else output)
+                st.success(f"Optimization complete! Thresholds updated in pair_thresholds.json")
+                st.rerun()
+
     def _pair_label(r):
         s1n = str(r.get("Stock1", "")).replace(".NS", "")
         s2n = str(r.get("Stock2", "")).replace(".NS", "")
