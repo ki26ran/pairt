@@ -153,34 +153,29 @@ class YahooFinanceProvider(DataProvider):
 
 class ShoonyaProvider(DataProvider):
     """Data provider that fetches market data via the Shoonya broker API.
-    Requires valid broker credentials in broker/auth.duckdb.
-    Uses broker/trading.py for all API calls.
+    Uses ganah for authentication and API setup.
     """
 
     def __init__(self, config: dict = None):
         self.config = config or {}
         self._api = None
-        self._paths_checked = False
-        self.broker_name = self.config.get("broker_name", "SHOONYA")
-        self.broker_user = self.config.get("broker_user", "FA138862")
-
-    def _ensure_paths(self):
-        if self._paths_checked:
-            return
-        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        broker_dir = os.path.join(root, "broker")
-        for p in sys.path:
-            if p in (root, broker_dir):
-                sys.path.remove(p)
-        sys.path.insert(0, root)
-        sys.path.insert(1, broker_dir)
-        self._paths_checked = True
+        self.broker_name = (self.config.get("broker_name") or
+                            self.config.get("name", "SHOONYA"))
+        self.broker_user = (self.config.get("broker_user") or
+                            self.config.get("user", "FA138862"))
+        cred_path = self.config.get("credential_db")
+        if cred_path:
+            config_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(config_dir))
+            self._credential_db = os.path.join(project_root, cred_path)
+        else:
+            self._credential_db = None
 
     def _ensure_api(self):
-        self._ensure_paths()
         if self._api is None:
-            from broker.broker.api import setup_api
-            self._api = setup_api(self.broker_name, self.broker_user)
+            from ganah import setup_api
+            self._api = setup_api(self.broker_name, self.broker_user,
+                                  db_path=self._credential_db)
         return self._api
 
     def _shoonya_to_multiindex(self, symbol_map: dict, interval: str) -> pd.DataFrame:

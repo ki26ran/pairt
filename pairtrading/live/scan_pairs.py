@@ -56,9 +56,7 @@ def _get_broker_api():
     if _broker_api is not None:
         return _broker_api
     try:
-        sys.path.insert(0, ROOT)
-        sys.path.insert(1, os.path.join(ROOT, "broker"))
-        from broker.broker.api import setup_api
+        from ganah import setup_api
         _broker_api = setup_api(BROKER_NAME, BROKER_USERNAME)
         return _broker_api
     except Exception as e:
@@ -88,7 +86,7 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
 
     try:
         side = "LONG" if direction == "LONG" else "SHORT"
-        from broker.broker.api import place_live_order
+        from ganah import place_live_order
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         base_qty = _lot_size(s1)
         qty = max(1, int(round(base_qty * lot_scale)))
@@ -112,7 +110,7 @@ def _place_pair_exit(s1, direction, reason, z_score):
         return
     try:
         side = "SHORT" if direction == "LONG" else "LONG"
-        from broker.broker.api import place_live_order
+        from ganah import place_live_order
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         qty = _lot_size(s1)
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])

@@ -7,8 +7,8 @@
     "PairTrading": "yahoo"
   },
   "broker": {
-    "broker_name": "SHOONYA",
-    "broker_user": "FA138862"
+    "name": "SHOONYA",
+    "user": "FA138862"
   },
   "retention": {
     "daily": "1095 days",

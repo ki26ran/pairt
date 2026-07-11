@@ -1,0 +1,3 @@
+[submodule "lib/ganah"]
+	path = lib/ganah
+	url = https://github.com/ki26ran/ganah.git
