@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from common.market_data.cache import get_cache
 from pairtrading.reports.pair_trading import _run_pair_backtest, _compute_metrics
-from configs.symbols import get_nifty200
+from pairtrading.configs.symbols import get_nifty200
 
 TH_FILE = os.path.join(ROOT, 'PairTrading', 'configs', 'pair_thresholds.json')
 with open(TH_FILE) as f:

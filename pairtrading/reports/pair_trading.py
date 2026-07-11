@@ -4,8 +4,8 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os, sys, json
-from configs.settings import DATA_DIR
-from configs.symbols import get_nifty200
+from pairtrading.configs.settings import DATA_DIR
+from pairtrading.configs.symbols import get_nifty200
 from pairtrading.live.cache import get_pair_cache
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -384,7 +384,7 @@ def maintenance():
         print("ERROR: No pair_thresholds.json found")
         return
 
-    from core.pair_discovery import reestimate_hedge_ratio
+    from pairtrading.core.pair_discovery import reestimate_hedge_ratio
 
     with open(THRESHOLDS_FILE) as f:
         thresholds = json.load(f)
@@ -419,8 +419,8 @@ def maintenance():
     # Auto-replenish: discover new same-sector pairs from Nifty 100
     print("\n--- Auto-Replenish ---")
     try:
-        from core.pair_discovery import discover_pairs
-        from configs.symbols import get_nifty100
+        from pairtrading.core.pair_discovery import discover_pairs
+        from pairtrading.configs.symbols import get_nifty100
         print("Discovering new same-sector pairs from Nifty 100...")
         df_new = discover_pairs(get_nifty100(), corr_threshold=0.80,
                                 pvalue_threshold=0.05, years=2,

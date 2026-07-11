@@ -23,9 +23,9 @@ if BASE_DIR not in sys.path:
 
 from common.market_data.cache import get_cache
 from pairtrading.live.cache import get_pair_cache
-from configs.telegram_config import send_message as pt_send
-from configs.symbols import get_nifty200
-from configs.settings import LIVE, BROKER_NAME, BROKER_USERNAME
+from pairtrading.configs.telegram_config import send_message as pt_send
+from pairtrading.configs.symbols import get_nifty200
+from pairtrading.configs.settings import LIVE, BROKER_NAME, BROKER_USERNAME
 
 _LOT_CACHE = None
 _broker_api = None

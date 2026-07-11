@@ -8,18 +8,18 @@ if _BASE not in sys.path:
 st.set_page_config(page_title="Pair Trading System", layout="wide")
 
 PAGES = {
-    "🏠 Home": "reports.home",
-    "1️⃣ Discover Pairs": "reports.discover_pairs",
-    "2️⃣ Backtest & Optimize": "reports.pair_trading",
-    "3️⃣ Live Monitor": "live.pair_scanner",
-    "⚙️ Scheduler": "reports.scheduler",
-    "📖 Guide": "reports.about",
+    "🏠 Home": "pairtrading.reports.home",
+    "1️⃣ Discover Pairs": "pairtrading.reports.discover_pairs",
+    "2️⃣ Backtest & Optimize": "pairtrading.reports.pair_trading",
+    "3️⃣ Live Monitor": "pairtrading.live.pair_scanner",
+    "⚙️ Scheduler": "pairtrading.reports.scheduler",
+    "📖 Guide": "pairtrading.reports.about",
 }
 PAGE_ORDER = list(PAGES.keys())
 
 if "page" not in st.session_state:
     nav_from_qp = st.query_params.get("nav")
-    st.session_state.page = nav_from_qp if nav_from_qp in PAGES.values() else "reports.home"
+    st.session_state.page = nav_from_qp if nav_from_qp in PAGES.values() else "pairtrading.reports.home"
 
 st.markdown("""
 <style>

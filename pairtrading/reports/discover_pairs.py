@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import os, json, threading, time, traceback, io
 from datetime import datetime
-from configs.settings import DATA_DIR
-from configs.symbols import get_nifty100, get_nifty200
-from core.pair_discovery import discover_pairs as run_discovery
+from pairtrading.configs.settings import DATA_DIR
+from pairtrading.configs.symbols import get_nifty100, get_nifty200
+from pairtrading.core.pair_discovery import discover_pairs as run_discovery
 from pairtrading.live.cache import get_pair_cache
 
 

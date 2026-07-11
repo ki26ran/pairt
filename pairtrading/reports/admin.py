@@ -95,7 +95,7 @@ def show():
     tab1, tab2, tab3, tab4 = st.tabs(["Telegram", "Broker", "Cleanup / Reset", "About"])
 
     with tab1:
-        from configs.telegram_config import get_config, update_config, is_configured, send_message
+        from pairtrading.configs.telegram_config import get_config, update_config, is_configured, send_message
 
         st.subheader("PairTrading Telegram Bot")
         st.markdown("Configure a Telegram bot for pair trading alerts (entry/exit signals, errors).")
@@ -147,14 +147,14 @@ def show():
         st.subheader("Broker Configuration")
         st.caption("Settings for live broker order placement. Disabled = paper trading only.")
 
-        from configs.settings import LIVE, BROKER_NAME, BROKER_USERNAME
+        from pairtrading.configs.settings import LIVE, BROKER_NAME, BROKER_USERNAME
 
         live = st.checkbox("Live Trading", value=LIVE, key="pt_live")
         bn = st.text_input("Broker Name", value=BROKER_NAME, key="pt_bn")
         bu = st.text_input("Broker Username", value=BROKER_USERNAME, key="pt_bu")
 
         if st.button("Save Broker Config", type="primary", key="pt_save_broker"):
-            from configs.settings import BROKER_CONFIG_FILE
+            from pairtrading.configs.settings import BROKER_CONFIG_FILE
             with open(BROKER_CONFIG_FILE, "w") as f:
                 json.dump({"live": live, "broker_name": bn, "broker_username": bu}, f, indent=2)
             st.success("Broker config saved. Restart scan_pairs.py to apply.")

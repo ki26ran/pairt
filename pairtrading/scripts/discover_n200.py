@@ -2,8 +2,8 @@ import sys, os, time, json
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'PairTrading'))
-from configs.symbols import get_nifty200
-from core.pair_discovery import discover_pairs
+from pairtrading.configs.symbols import get_nifty200
+from pairtrading.core.pair_discovery import discover_pairs
 from pairtrading.live.cache import get_pair_cache
 import pandas as pd
 
