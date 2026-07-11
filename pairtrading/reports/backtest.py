@@ -241,6 +241,7 @@ def show():
                     entry_time = pos["entry_date"]
                     exit_time = ts
                     s1, s2 = pk.split("|")
+                    t_pnl = round(float(pnl_s1) + float(pnl_s2), 2)
                     all_trades.append({
                         "pair": pk, "s1": s1, "s2": s2,
                         "entry_date": entry_time, "exit_date": exit_time,
@@ -250,7 +251,7 @@ def show():
                         "exit_p2": round(float(cp2), 2),
                         "pnl_s1": round(float(pnl_s1), 2),
                         "pnl_s2": round(float(pnl_s2), 2),
-                        "total_pnl": total_pnl,
+                        "total_pnl": t_pnl,
                         "direction": "SHORT", "reason": exit_reason,
                     })
                     del active[pk]
