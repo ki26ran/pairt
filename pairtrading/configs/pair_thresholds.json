@@ -1,0 +1,157 @@
+{
+  "ANGELONE.NS|BAJAJFINSV.NS": {
+    "entry_z": 2.5,
+    "exit_z": 2.0,
+    "hr": 7.2395
+  },
+  "ANGELONE.NS|HDFCLIFE.NS": {
+    "entry_z": 1.5,
+    "exit_z": 1.25,
+    "hr": 13.4983
+  },
+  "BAJAJFINSV.NS|HDFCBANK.NS": {
+    "entry_z": 2.0,
+    "exit_z": 1.75,
+    "hr": 1.2991
+  },
+  "BAJAJFINSV.NS|HDFCLIFE.NS": {
+    "entry_z": 2.25,
+    "exit_z": 2.0,
+    "hr": 1.5735
+  },
+  "BANKINDIA.NS|SBIN.NS": {
+    "entry_z": 1.25,
+    "exit_z": 0.25,
+    "hr": 0.1372,
+    "optimized_at": "2026-07-10 22:53",
+    "opt_score": 31356.117,
+    "opt_sharpe": 31349.982,
+    "opt_trades": 1,
+    "opt_win_rate": 100.0
+  },
+  "BDL.NS|CONCOR.NS": {
+    "entry_z": 2.25,
+    "exit_z": 2.0,
+    "hr": 3.9967
+  },
+  "BDL.NS|MAZDOCK.NS": {
+    "entry_z": 0.75,
+    "exit_z": 0.5,
+    "hr": 0.6036
+  },
+  "CANBK.NS|MUTHOOTFIN.NS": {
+    "entry_z": 0.5,
+    "exit_z": 0.25,
+    "hr": 0.0297,
+    "optimized_at": "2026-07-10 22:53",
+    "opt_score": 17317.256,
+    "opt_sharpe": 17312.525,
+    "opt_trades": 1,
+    "opt_win_rate": 100.0
+  },
+  "CDSL.NS|MCX.NS": {
+    "entry_z": 1.0,
+    "exit_z": 0.75,
+    "hr": 0.0464
+  },
+  "CDSL.NS|SBICARD.NS": {
+    "entry_z": 1.75,
+    "exit_z": 0.25,
+    "hr": 1.3566
+  },
+  "COCHINSHIP.NS|CONCOR.NS": {
+    "entry_z": 0.5,
+    "exit_z": 0.25,
+    "hr": 4.0402,
+    "optimized_at": "2026-07-10 22:53",
+    "opt_score": 3528.368,
+    "opt_sharpe": 3525.015,
+    "opt_trades": 1,
+    "opt_win_rate": 100.0
+  },
+  "COCHINSHIP.NS|HAL.NS": {
+    "entry_z": 1.5,
+    "exit_z": 1.25,
+    "hr": 0.5841
+  },
+  "COCHINSHIP.NS|INOXWIND.NS": {
+    "entry_z": 2.25,
+    "exit_z": 1.25,
+    "hr": 6.0221
+  },
+  "CUMMINSIND.NS|KEI.NS": {
+    "entry_z": 2.25,
+    "exit_z": 1.5,
+    "hr": 1.2931
+  },
+  "GVT&D.NS|KEI.NS": {
+    "entry_z": 2.0,
+    "exit_z": 1.75,
+    "hr": 1.5085
+  },
+  "HAL.NS|INOXWIND.NS": {
+    "entry_z": 2.75,
+    "exit_z": 0.5,
+    "hr": 8.8525
+  },
+  "HINDALCO.NS|JSWSTEEL.NS": {
+    "entry_z": 2.0,
+    "exit_z": 1.75,
+    "hr": 1.4112
+  },
+  "HYUNDAI.NS|UNOMINDA.NS": {
+    "entry_z": 3.0,
+    "exit_z": 1.5,
+    "hr": 2.1136
+  },
+  "ICICIBANK.NS|IRFC.NS": {
+    "entry_z": 1.75,
+    "exit_z": 1.5,
+    "hr": 3.7218
+  },
+  "IEX.NS|IREDA.NS": {
+    "entry_z": 1.75,
+    "exit_z": 1.5,
+    "hr": 1.3327
+  },
+  "JINDALSTEL.NS|TATASTEEL.NS": {
+    "entry_z": 2.0,
+    "exit_z": 1.75,
+    "hr": 5.0152
+  },
+  "JIOFIN.NS|KOTAKBANK.NS": {
+    "entry_z": 1.75,
+    "exit_z": 0.25,
+    "hr": 0.035,
+    "optimized_at": "2026-07-10 22:53",
+    "opt_score": 7459.306,
+    "opt_sharpe": 7455.56,
+    "opt_trades": 1,
+    "opt_win_rate": 100.0
+  },
+  "KFINTECH.NS|TCS.NS": {
+    "entry_z": 1.5,
+    "exit_z": 1.25,
+    "hr": 0.265
+  },
+  "M&M.NS|UNOMINDA.NS": {
+    "entry_z": 1.5,
+    "exit_z": 0.25,
+    "hr": 2.1863
+  },
+  "MARUTI.NS|UNOMINDA.NS": {
+    "entry_z": 1.5,
+    "exit_z": 0.25,
+    "hr": 13.7735
+  },
+  "PIIND.NS|SHREECEM.NS": {
+    "entry_z": 3.0,
+    "exit_z": 2.25,
+    "hr": 0.1584
+  },
+  "SHREECEM.NS|TATACHEM.NS": {
+    "entry_z": 1.25,
+    "exit_z": 0.75,
+    "hr": 20.9362
+  }
+}

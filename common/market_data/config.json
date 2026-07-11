@@ -1,0 +1,30 @@
+{
+  "db_path": "../../data/market_data.duckdb",
+  "os": "windows",
+  "data_provider": "yahoo",
+  "portfolio_providers": {
+    "__default__": "yahoo",
+    "PairTrading": "yahoo"
+  },
+  "broker": {
+    "broker_name": "SHOONYA",
+    "broker_user": "FA138862"
+  },
+  "retention": {
+    "daily": "1095 days",
+    "hourly": "365 days",
+    "5m": "60 days",
+    "1m": "365 days"
+  },
+  "sync": {
+    "daily_at": "16:15",
+    "batch_size": 30,
+    "sleep_between_batches": 5,
+    "retry_count": 3,
+    "retry_delay": 60
+  },
+  "universes": {
+    "nifty50": "../universes.py",
+    "nifty200": "../universes.py"
+  }
+}
