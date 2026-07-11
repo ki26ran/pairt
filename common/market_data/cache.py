@@ -19,13 +19,16 @@ except ImportError:
 from .provider import get_provider
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE, "config.json")
 
 
 def _load_config():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE) as f:
-            return json.load(f)
+    env = os.environ.get("APP_ENV", "")
+    candidates = [f"config.{env}.json", "config.json"] if env else ["config.json"]
+    for name in candidates:
+        path = os.path.join(BASE, name)
+        if os.path.exists(path):
+            with open(path) as f:
+                return json.load(f)
     return {}
 
 

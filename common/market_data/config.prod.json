@@ -1,10 +1,10 @@
 {
-  "host": "localhost",
-  "os": "windows",
+  "host": "200.97.160.126",
+  "os": "linux",
   "db_path": "../../data/market_data.duckdb",
-  "credential_db": "../../lib/ganah/ganah/auth/auth.duckdb",
+  "credential_db": "../../auth/auth.duckdb",
   "portfolio_providers": {
-    "__default__": "yahoo"
+    "__default__": "shoonya"
   },
   "broker": {
     "name": "SHOONYA",

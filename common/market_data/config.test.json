@@ -1,6 +1,6 @@
 {
-  "host": "localhost",
-  "os": "windows",
+  "host": "whaleubuntu",
+  "os": "linux",
   "db_path": "../../data/market_data.duckdb",
   "credential_db": "../../lib/ganah/ganah/auth/auth.duckdb",
   "portfolio_providers": {
