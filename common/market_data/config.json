@@ -10,6 +10,7 @@
     "name": "SHOONYA",
     "user": "FA138862"
   },
+  "credential_db": "../../lib/ganah/ganah/auth/auth.duckdb",
   "retention": {
     "daily": "1095 days",
     "hourly": "365 days",
