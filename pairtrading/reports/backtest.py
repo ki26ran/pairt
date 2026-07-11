@@ -79,11 +79,12 @@ def _run_pair_backtest(p1, p2, spread, zscore, hr, l1, l2, lot1, lot2,
 
 
 def _option_premium(price, strike, direction, tv_pct=0.02):
+    diff = float(price) - float(strike)
     if direction == "LONG":
-        intrinsic = max(0, price - strike)
+        intrinsic = diff if diff > 0 else 0.0
     else:
-        intrinsic = max(0, strike - price)
-    return intrinsic + price * tv_pct
+        intrinsic = -diff if diff < 0 else 0.0
+    return intrinsic + float(price) * tv_pct
 
 
 def _option_pnl(entry_p, exit_p, strike, direction, lot, tv_pct=0.02):
@@ -230,13 +231,13 @@ def show():
 
                 if exit_reason:
                     if use_options:
-                        tick = max(0.05, pos["entry_p1"] * 0.001)
-                        atm = round(pos["entry_p1"] / tick) * tick
-                        pnl_s1 = _option_pnl(pos["entry_p1"], cp1, atm, "SHORT", pd_["lot1"])
-                        pnl_s2 = _option_pnl(pos["entry_p2"], cp2, atm, "LONG", pd_["lot2"])
+                        tick = 0.05 if 0.05 > float(pos["entry_p1"]) * 0.001 else float(pos["entry_p1"]) * 0.001
+                        atm = round(float(pos["entry_p1"]) / tick) * tick
+                        pnl_s1 = _option_pnl(float(pos["entry_p1"]), float(cp1), atm, "SHORT", pd_["lot1"])
+                        pnl_s2 = _option_pnl(float(pos["entry_p2"]), float(cp2), atm, "LONG", pd_["lot2"])
                     else:
-                        pnl_s1 = (pos["entry_p1"] - cp1) * pd_["lot1"]
-                        pnl_s2 = (cp2 - pos["entry_p2"]) * pd_["lot2"]
+                        pnl_s1 = (float(pos["entry_p1"]) - float(cp1)) * pd_["lot1"]
+                        pnl_s2 = (float(cp2) - float(pos["entry_p2"])) * pd_["lot2"]
                     total_pnl = round(pnl_s1 + pnl_s2, 2)
                     all_trades.append({"pair": pk, "entry_date": pos["entry_date"], "exit_date": ts,
                                        "direction": "SHORT", "total_pnl": total_pnl, "reason": exit_reason})
@@ -262,7 +263,8 @@ def show():
                     open_sectors.add(pk)
 
             d = ts.date() if hasattr(ts, 'date') else ts
-            daily_max[d] = max(daily_max.get(d, 0), len(active))
+            _pv = daily_max.get(d, 0)
+            daily_max[d] = _pv if _pv > len(active) else len(active)
 
         # Report
         if not all_trades:
@@ -270,12 +272,24 @@ def show():
             return
 
         tdf = pd.DataFrame(all_trades)
-        total_pnl = tdf["total_pnl"].sum()
-        wins = (tdf["total_pnl"] > 0).sum()
+        total_pnl = float(tdf["total_pnl"].sum())
+        wins = int((tdf["total_pnl"] > 0).sum())
         total = len(tdf)
         wr = wins / total * 100 if total else 0
 
         st.success(f"Backtest complete: {total} trades, Net P&L Rs {total_pnl:+,.0f}, WR {wr:.0f}%")
+
+        # Trade log
+        st.subheader("Trade Log")
+        tdf["entry_date_str"] = tdf["entry_date"].apply(lambda x: str(x)[:10])
+        tdf["exit_date_str"] = tdf["exit_date"].apply(lambda x: str(x)[:10])
+        log_cols = ["entry_date_str", "exit_date_str", "pair", "direction", "reason", "total_pnl"]
+        log_df = tdf[log_cols].copy()
+        log_df.columns = ["Entry", "Exit", "Pair", "Dir", "Reason", "P&L"]
+        log_df["P&L"] = log_df["P&L"].apply(lambda x: f"Rs {x:+,.0f}")
+        st.dataframe(log_df, use_container_width=True, hide_index=True)
+        csv_data = log_df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download CSV", csv_data, "pairt_trades.csv", "text/csv")
 
         # Per-pair breakdown
         pair_pnl = tdf.groupby("pair")["total_pnl"].agg(["sum", "count"])
@@ -291,13 +305,19 @@ def show():
         st.dataframe(monthly.to_frame("P&L").style.format({"P&L": "Rs {:+,.0f}"}), use_container_width=True)
 
         # Concurrent
-        avg_conc = sum(daily_max.values()) / len(daily_max) if daily_max else 0
-        st.caption(f"Max concurrent: {max(daily_max.values()) if daily_max else 0}, Avg: {avg_conc:.1f}")
+        try:
+            conc_vals = list(daily_max.values())
+            max_conc = max(conc_vals) if conc_vals else 0
+            avg_conc = sum(conc_vals) / len(conc_vals) if conc_vals else 0.0
+        except Exception:
+            max_conc = 0
+            avg_conc = 0.0
+        st.caption(f"Max concurrent: {max_conc}, Avg: {avg_conc:.1f}")
 
         # Monthly chart
         fig = go.Figure()
-        fig.add_trace(go.Bar(x=list(monthly.index), y=list(monthly.values),
-                             marker_color=["#00e676" if v >= 0 else "#ff5252" for v in monthly.values()]))
+        fig.add_trace(go.Bar(x=list(monthly.index), y=[float(v) for v in monthly.values()],
+                             marker_color=["#00e676" if float(v) >= 0 else "#ff5252" for v in monthly.values()]))
         fig.update_layout(title="Monthly P&L", height=350, template="plotly_dark",
                           xaxis_title="Month", yaxis_title="P&L (Rs)")
         st.plotly_chart(fig, use_container_width=True)
