@@ -848,7 +848,7 @@ class DataCache:
         if date_str is None:
             date_str = datetime.now().strftime("%Y-%m-%d")
         tickers = self.get_universe("nifty200")
-        start = self._delta_start("hourly", 60)
+        start = self._delta_start("hourly", 365)
         end = (pd.Timestamp(date_str) + timedelta(days=1)).strftime("%Y-%m-%d")
         if start > end:
             start = end
