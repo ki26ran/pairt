@@ -166,8 +166,7 @@ class ShoonyaProvider(DataProvider):
         cred_path = self.config.get("credential_db")
         if cred_path:
             config_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(os.path.dirname(config_dir))
-            self._credential_db = os.path.join(project_root, cred_path)
+            self._credential_db = os.path.normpath(os.path.join(config_dir, cred_path))
         else:
             self._credential_db = None
 
