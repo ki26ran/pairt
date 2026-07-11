@@ -309,9 +309,9 @@ class ShoonyaProvider(DataProvider):
     def get_last_price(self, symbol):
         """Fetch latest price via Shoonya get_quotes."""
         self._ensure_api()
-        clean = symbol.replace(".NS", "").replace(".BO", "")
+        shoonya_sym = self._to_shoonya_sym(symbol)
         try:
-            resp = self._api.get_quotes("NSE", clean)
+            resp = self._api.get_quotes("NSE", shoonya_sym)
             if resp and isinstance(resp, dict):
                 return float(resp.get("lp", 0))
         except Exception:
