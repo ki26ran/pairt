@@ -314,7 +314,6 @@ def _show_impl():
     total_th = len(th_data)
     st.info(f"**{total_th} configured** + **{max(0, total_pairs - total_th)} unconfigured** = **{total_pairs} total pairs** available.")
     if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True):
-        import json
         # Merge discovered pairs into thresholds file with default params
         with open(THRESHOLDS_FILE) as f:
             saved_th = json.load(f)
