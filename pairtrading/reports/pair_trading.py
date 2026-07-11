@@ -310,21 +310,35 @@ def _show_impl():
     st.divider()
 
     # ── Batch optimize all pairs ──────────────────────────────
-    if th_data:
-        total_pairs = len(th_data)
-        st.info(f"**{total_pairs} pairs** currently configured. Click below to run walk-forward optimization on all pairs.")
-        if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True):
-            from pairtrading.optimizer import run as run_optimizer
-            with st.spinner(f"Optimizing {total_pairs} pairs — this may take several minutes..."):
-                import io, contextlib
-                buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
-                    run_optimizer(months=6)
-                output = buf.getvalue()
-            with st.expander("Optimizer Results", expanded=True):
-                st.code(output[-3000:] if len(output) > 3000 else output)
-            st.success(f"Optimization complete! Thresholds updated in pairtrading/configs/pair_thresholds.json")
-            st.rerun()
+    total_pairs = len(df_pairs)
+    total_th = len(th_data)
+    st.info(f"**{total_th} configured** + **{max(0, total_pairs - total_th)} unconfigured** = **{total_pairs} total pairs** available.")
+    if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True):
+        import json
+        # Merge discovered pairs into thresholds file with default params
+        with open(THRESHOLDS_FILE) as f:
+            saved_th = json.load(f)
+        changed = 0
+        for _, r in df_pairs.iterrows():
+            pk = str(r.get("Stock1", "")) + "|" + str(r.get("Stock2", ""))
+            if pk not in saved_th:
+                saved_th[pk] = {"entry_z": 2.0, "exit_z": 1.0, "hr": float(r.get("Hedge_Ratio", 1.0))}
+                changed += 1
+        if changed:
+            with open(THRESHOLDS_FILE, "w") as f:
+                json.dump(saved_th, f, indent=2)
+            st.info(f"Added {changed} new pairs to thresholds file. Optimizing all {total_pairs}...")
+        from pairtrading.optimizer import run as run_optimizer
+        with st.spinner(f"Optimizing {total_pairs} pairs — may take several minutes..."):
+            import io, contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                run_optimizer(months=6)
+            output = buf.getvalue()
+        with st.expander("Optimizer Results", expanded=True):
+            st.code(output[-3000:] if len(output) > 3000 else output)
+        st.success(f"Optimization complete! Thresholds updated.")
+        st.rerun()
 
     def _pair_label(r):
         s1n = str(r.get("Stock1", "")).replace(".NS", "")
