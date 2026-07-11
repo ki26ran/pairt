@@ -286,28 +286,38 @@ def show():
         log_cols = ["entry_date_str", "exit_date_str", "pair", "direction", "reason", "total_pnl"]
         log_df = tdf[log_cols].copy()
         log_df.columns = ["Entry", "Exit", "Pair", "Dir", "Reason", "P&L"]
-        log_df["P&L"] = log_df["P&L"].apply(lambda x: f"Rs {x:+,.0f}")
+        log_df["P&L"] = log_df["P&L"].apply(lambda x: f"Rs {float(x):+,.0f}")
         st.dataframe(log_df, use_container_width=True, hide_index=True)
         csv_data = log_df.to_csv(index=False).encode("utf-8")
         st.download_button("Download CSV", csv_data, "pairt_trades.csv", "text/csv")
 
         # Per-pair breakdown
-        pair_pnl = tdf.groupby("pair")["total_pnl"].agg(["sum", "count"])
-        pair_pnl.columns = ["P&L", "Trades"]
-        pair_pnl = pair_pnl.sort_values("P&L", ascending=False)
-        st.subheader("Per-Pair P&L")
-        st.dataframe(pair_pnl.style.format({"P&L": "Rs {:,.0f}"}), use_container_width=True)
+        try:
+            pair_pnl = tdf.groupby("pair")["total_pnl"].agg(["sum", "count"])
+            pair_pnl.columns = ["P&L", "Trades"]
+            pair_pnl = pair_pnl.sort_values("P&L", ascending=False)
+            st.subheader("Per-Pair P&L")
+            st.dataframe(pair_pnl.style.format({"P&L": "Rs {:,.0f}"}), use_container_width=True)
+        except Exception as e:
+            st.error(f"Pair breakdown error: {e}")
 
         # Monthly
-        tdf["month"] = tdf["entry_date"].apply(lambda x: str(x)[:7])
-        monthly = tdf.groupby("month")["total_pnl"].sum()
-        st.subheader("Monthly P&L")
-        st.dataframe(monthly.to_frame("P&L").style.format({"P&L": "Rs {:+,.0f}"}), use_container_width=True)
+        monthly_total = pd.Series(dtype=float)
+        try:
+            tdf["month"] = tdf["entry_date"].apply(lambda x: str(x)[:7])
+            monthly_total = tdf.groupby("month")["total_pnl"].sum()
+            st.subheader("Monthly P&L")
+            st.dataframe(monthly_total.to_frame("P&L").style.format({"P&L": "Rs {:+,.0f}"}), use_container_width=True)
+        except Exception as e:
+            st.error(f"Monthly P&L error: {e}")
 
         # Concurrent
         try:
             conc_vals = list(daily_max.values())
-            max_conc = max(conc_vals) if conc_vals else 0
+            max_conc = 0
+            for v in conc_vals:
+                if v > max_conc:
+                    max_conc = v
             avg_conc = sum(conc_vals) / len(conc_vals) if conc_vals else 0.0
         except Exception:
             max_conc = 0
@@ -315,9 +325,14 @@ def show():
         st.caption(f"Max concurrent: {max_conc}, Avg: {avg_conc:.1f}")
 
         # Monthly chart
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=list(monthly.index), y=[float(v) for v in monthly.values()],
-                             marker_color=["#00e676" if float(v) >= 0 else "#ff5252" for v in monthly.values()]))
-        fig.update_layout(title="Monthly P&L", height=350, template="plotly_dark",
-                          xaxis_title="Month", yaxis_title="P&L (Rs)")
-        st.plotly_chart(fig, use_container_width=True)
+        try:
+            fig = go.Figure()
+            m_idx = [str(x) for x in monthly_total.index]
+            m_vals = [float(monthly_total.iloc[i]) for i in range(len(monthly_total))]
+            colors = ["#00e676" if v >= 0 else "#ff5252" for v in m_vals]
+            fig.add_trace(go.Bar(x=m_idx, y=m_vals, marker_color=colors))
+            fig.update_layout(title="Monthly P&L", height=350, template="plotly_dark",
+                              xaxis_title="Month", yaxis_title="P&L (Rs)")
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Chart error: {e}")
