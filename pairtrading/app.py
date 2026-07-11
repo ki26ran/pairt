@@ -5,6 +5,8 @@ _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
 
+from common.market_data.provider import _load_config as _get_config
+
 st.set_page_config(page_title="Pair Trading System", layout="wide")
 
 PAGES = {
@@ -49,8 +51,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+_cfg = _get_config()
+_host = _cfg.get("host", "localhost")
+_provider = _cfg.get("portfolio_providers", {}).get("__default__", "yahoo")
+
 st.sidebar.markdown(
     "<p style='margin:6px 0;text-align:center;font-size:1.1rem;font-weight:700'>📈 PairTrading</p>"
+    f"<p style='margin:0;text-align:center;font-size:11px;color:#888'>{_host} • {_provider.upper()}</p>"
     "<hr style='margin:2px 0 8px'>",
     unsafe_allow_html=True,
 )
