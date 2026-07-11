@@ -132,7 +132,7 @@ def show():
     with col3:
         max_pairs = st.number_input("Max pairs", min_value=1, max_value=50, value=5)
     with col4:
-        instrument = st.selectbox("Instrument", ["Options (ATM)", "Futures", "Options + Rs50K SL"], index=0)
+        instrument = st.selectbox("Instrument", ["Options (ATM)", "Futures", "Options + Rs40K SL", "Options + Rs50K SL"], index=0)
 
     # ── Run backtest ───────────────────────────────────────────
     if st.button("Run Backtest", type="primary", use_container_width=True):
@@ -221,7 +221,13 @@ def show():
                 days_held = (ts - pos["entry_date"]).days
 
                 exit_reason = None
-                use_hard_sl = use_options and "Rs50K" in instrument
+                use_hard_sl = use_options and "Rs" in instrument
+                hard_sl_amount = 50000
+                if use_hard_sl:
+                    import re
+                    m = re.search(r"Rs(\d+)K", instrument)
+                    if m:
+                        hard_sl_amount = int(m.group(1)) * 1000
 
                 # Hard SL check (running P&L)
                 if use_hard_sl:
@@ -237,7 +243,7 @@ def show():
                         sl_pnl_s1 = (ep1 - curr_p1) * pd_["lot1"]
                         sl_pnl_s2 = (curr_p2 - ep2) * pd_["lot2"]
                     running_pnl = sl_pnl_s1 + sl_pnl_s2
-                    if abs(running_pnl) >= 50000:
+                    if abs(running_pnl) >= hard_sl_amount:
                         exit_reason = "hard_sl"
 
                 if not exit_reason and pos["direction"] == "SHORT":
