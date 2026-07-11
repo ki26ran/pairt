@@ -665,14 +665,15 @@ class PairTradingCache:
         try:
             con = self._db_write()
             con.execute("DELETE FROM pair_discovered")
+            next_id = con.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM pair_discovered").fetchone()[0]
             for _, r in df.iterrows():
-                pk = f"{r['Stock1']}|{r['Stock2']}"
                 con.execute("""
-                    INSERT INTO pair_discovered (pair_key, stock1, stock2, sector, correlation, coint_pvalue, hedge_ratio, half_life)
+                    INSERT INTO pair_discovered (id, stock1, stock2, sector, correlation, coint_pvalue, hedge_ratio, half_life)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (pk, r['Stock1'], r['Stock2'], r.get('Sector', ''),
+                """, (next_id, r['Stock1'], r['Stock2'], r.get('Sector', ''),
                       float(r.get('Correlation', 0)), float(r.get('Coint_PValue', 1)),
                       float(r.get('Hedge_Ratio', 1)), float(r.get('Half_Life', 0))))
+                next_id += 1
             con.commit()
             return True
         except Exception as e:

@@ -241,11 +241,18 @@ def _show_impl():
             file_th = json.load(f)
             th_data.update({k: v for k, v in file_th.items() if k not in th_data})
 
-    # Load pairs from DuckDB (primary), fall back to CSV
+    # Load pairs from DuckDB (primary), fall back to thresholds, then CSV
     pair_cache = get_pair_cache()
     pairs_list = pair_cache.load_discovered_pairs()
     if pairs_list:
         df_pairs = pd.DataFrame(pairs_list)
+    elif th_data:
+        # Build pairs list from existing thresholds
+        rows = []
+        for pk in th_data:
+            s1, s2 = pk.split("|")
+            rows.append({"Stock1": s1, "Stock2": s2, "Sector": "", "Pair_Key": pk})
+        df_pairs = pd.DataFrame(rows)
     elif os.path.exists(PAIRS_FILE):
         try:
             df_pairs = pd.read_csv(PAIRS_FILE)
