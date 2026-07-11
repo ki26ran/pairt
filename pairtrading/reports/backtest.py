@@ -89,7 +89,7 @@ def _option_premium(price, strike, direction, tv_pct=0.02):
 
 def _option_pnl(entry_p, exit_p, strike, direction, lot, tv_pct=0.02):
     entry_prem = _option_premium(entry_p, strike, direction, tv_pct)
-    exit_prem = _option_premium(exit_p, strike, direction, tv_pct)
+    exit_prem = _option_premium(exit_p, strike, direction, 0.0)  # no time value at exit (near-expiry)
     return (exit_prem - entry_prem) * lot
 
 
