@@ -132,7 +132,7 @@ def show():
     with col3:
         max_pairs = st.number_input("Max pairs", min_value=1, max_value=50, value=5)
     with col4:
-        instrument = st.selectbox("Instrument", ["Options (ATM)", "Futures"], index=0)
+        instrument = st.selectbox("Instrument", ["Options (ATM)", "Futures", "Options + Rs50K SL"], index=0)
 
     # ── Run backtest ───────────────────────────────────────────
     if st.button("Run Backtest", type="primary", use_container_width=True):
@@ -221,7 +221,26 @@ def show():
                 days_held = (ts - pos["entry_date"]).days
 
                 exit_reason = None
-                if pos["direction"] == "SHORT":
+                use_hard_sl = use_options and "Rs50K" in instrument
+
+                # Hard SL check (running P&L)
+                if use_hard_sl:
+                    # Estimate current P&L for this position
+                    curr_p1 = float(cp1); curr_p2 = float(cp2)
+                    ep1 = float(pos["entry_p1"]); ep2 = float(pos["entry_p2"])
+                    if use_options:
+                        tick = 0.05 if 0.05 > ep1 * 0.001 else ep1 * 0.001
+                        atm = round(ep1 / tick) * tick
+                        sl_pnl_s1 = _option_pnl(ep1, curr_p1, atm, "SHORT", pd_["lot1"])
+                        sl_pnl_s2 = _option_pnl(ep2, curr_p2, atm, "LONG", pd_["lot2"])
+                    else:
+                        sl_pnl_s1 = (ep1 - curr_p1) * pd_["lot1"]
+                        sl_pnl_s2 = (curr_p2 - ep2) * pd_["lot2"]
+                    running_pnl = sl_pnl_s1 + sl_pnl_s2
+                    if abs(running_pnl) >= 50000:
+                        exit_reason = "hard_sl"
+
+                if not exit_reason and pos["direction"] == "SHORT":
                     if zv <= -pd_["exit_z"]:
                         exit_reason = "mean-reversion"
                     elif zv >= pos["entry_z_actual"] * 2.0:
