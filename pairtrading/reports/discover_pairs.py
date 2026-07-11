@@ -53,6 +53,31 @@ def _render_pairs_table(df):
                  use_container_width=True, height=400)
 
 
+def _configure_discovered_as_thresholds():
+    """Replace all thresholds with the currently discovered pairs (default params)."""
+    import json
+    from pairtrading.configs.settings import DATA_DIR
+    pc = get_pair_cache()
+    disc = pc.load_discovered_pairs()
+    if not disc:
+        return False, "No discovered pairs to configure"
+    thresholds = {}
+    for row in disc:
+        s1 = row.get("Stock1") or row.get("stock1", "")
+        s2 = row.get("Stock2") or row.get("stock2", "")
+        key = f"{s1}|{s2}"
+        thresholds[key] = {
+            "entry_z": 2.0,
+            "exit_z": 0.5,
+            "hr": float(row.get("hedge_ratio", row.get("Hedge_Ratio", 1.0))),
+        }
+    pc.save_thresholds(thresholds)
+    th_path = os.path.join(os.path.dirname(DATA_DIR), "configs", "pair_thresholds.json")
+    with open(th_path, "w") as f:
+        json.dump(thresholds, f, indent=2, default=str)
+    return True, f"Configured {len(thresholds)} pairs for trading"
+
+
 def show():
     st.title("🔎 Discover Pairs")
     st.markdown("Find cointegrated stock pairs from Nifty 100 (same-sector only). Results feed into Backtest & Optimize.")
@@ -108,10 +133,22 @@ def show():
             df = pd.DataFrame(pairs_list)
             _render_pairs_table(df)
 
-            if st.button("🗑 Clear Results", key="clear_pairs"):
-                pair_cache.clear_discovered_pairs()
-                pair_cache.delete_config("discovery_status")
-                st.rerun()
+            col_a, col_b = st.columns([1, 1])
+            with col_a:
+                if st.button("⚙️ Configure for Trading", type="primary", key="cfg_trading"):
+                    ok, msg = _configure_discovered_as_thresholds()
+                    if ok:
+                        st.success(msg)
+                        pair_cache.set_config("discovery_status", {"status": "configured",
+                            "configured_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "pairs": len(pairs_list)})
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            with col_b:
+                if st.button("🗑 Clear Results", key="clear_pairs"):
+                    pair_cache.clear_discovered_pairs()
+                    pair_cache.delete_config("discovery_status")
+                    st.rerun()
 
         out = status.get("output", "")
         if out:
