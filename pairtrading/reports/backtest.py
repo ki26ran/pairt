@@ -238,9 +238,21 @@ def show():
                     else:
                         pnl_s1 = (float(pos["entry_p1"]) - float(cp1)) * pd_["lot1"]
                         pnl_s2 = (float(cp2) - float(pos["entry_p2"])) * pd_["lot2"]
-                    total_pnl = round(pnl_s1 + pnl_s2, 2)
-                    all_trades.append({"pair": pk, "entry_date": pos["entry_date"], "exit_date": ts,
-                                       "direction": "SHORT", "total_pnl": total_pnl, "reason": exit_reason})
+                    entry_time = pos["entry_date"]
+                    exit_time = ts
+                    s1, s2 = pk.split("|")
+                    all_trades.append({
+                        "pair": pk, "s1": s1, "s2": s2,
+                        "entry_date": entry_time, "exit_date": exit_time,
+                        "entry_p1": round(float(pos["entry_p1"]), 2),
+                        "exit_p1": round(float(cp1), 2),
+                        "entry_p2": round(float(pos["entry_p2"]), 2),
+                        "exit_p2": round(float(cp2), 2),
+                        "pnl_s1": round(float(pnl_s1), 2),
+                        "pnl_s2": round(float(pnl_s2), 2),
+                        "total_pnl": total_pnl,
+                        "direction": "SHORT", "reason": exit_reason,
+                    })
                     del active[pk]
 
             # Entries
@@ -281,12 +293,18 @@ def show():
 
         # Trade log
         st.subheader("Trade Log")
-        tdf["entry_date_str"] = tdf["entry_date"].apply(lambda x: str(x)[:10])
-        tdf["exit_date_str"] = tdf["exit_date"].apply(lambda x: str(x)[:10])
-        log_cols = ["entry_date_str", "exit_date_str", "pair", "direction", "reason", "total_pnl"]
+        tdf["entry_str"] = tdf["entry_date"].apply(lambda x: str(x)[:16])
+        tdf["exit_str"] = tdf["exit_date"].apply(lambda x: str(x)[:16])
+        log_cols = ["entry_str", "exit_str", "s1", "s2", "entry_p1", "exit_p1", "entry_p2", "exit_p2",
+                    "pnl_s1", "pnl_s2", "total_pnl", "reason"]
         log_df = tdf[log_cols].copy()
-        log_df.columns = ["Entry", "Exit", "Pair", "Dir", "Reason", "P&L"]
-        log_df["P&L"] = log_df["P&L"].apply(lambda x: f"Rs {float(x):+,.0f}")
+        log_df.columns = ["Entry Time", "Exit Time", "Leg1", "Leg2",
+                          "L1 Entry", "L1 Exit", "L2 Entry", "L2 Exit",
+                          "L1 P&L", "L2 P&L", "Total P&L", "Reason"]
+        for c in ["L1 Entry", "L1 Exit", "L2 Entry", "L2 Exit"]:
+            log_df[c] = log_df[c].apply(lambda x: f"{float(x):.2f}")
+        for c in ["L1 P&L", "L2 P&L", "Total P&L"]:
+            log_df[c] = log_df[c].apply(lambda x: f"Rs {float(x):+,.0f}")
         st.dataframe(log_df, use_container_width=True, hide_index=True)
         csv_data = log_df.to_csv(index=False).encode("utf-8")
         st.download_button("Download CSV", csv_data, "pairt_trades.csv", "text/csv")
