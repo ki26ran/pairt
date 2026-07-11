@@ -18,7 +18,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 if os.path.join(ROOT, "common") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "common"))
-from PairTrading.configs.symbols import get_nifty200
+from pairtrading.configs.symbols import get_nifty200
 from common.market_data.cache import get_cache
 
 THRESHOLDS_FILE = os.path.join(BASE_DIR, "configs", "pair_thresholds.json")

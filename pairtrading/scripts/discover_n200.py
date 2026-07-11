@@ -4,7 +4,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'PairTrading'))
 from configs.symbols import get_nifty200
 from core.pair_discovery import discover_pairs
-from PairTrading.live.cache import get_pair_cache
+from pairtrading.live.cache import get_pair_cache
 import pandas as pd
 
 TH_FILE = os.path.join(ROOT, 'PairTrading', 'configs', 'pair_thresholds.json')

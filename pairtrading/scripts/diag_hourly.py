@@ -61,7 +61,7 @@ bstd = bspread.rolling(126).std()
 bz = ((bspread - bmean) / bstd).dropna()
 print(f'Step 5: Z-score = {time.time()-t0:.3f}s, z_len={len(bz)}')
 
-from PairTrading.reports.pair_trading import _run_pair_backtest, _compute_metrics
+from pairtrading.reports.pair_trading import _run_pair_backtest, _compute_metrics
 t0 = time.time()
 trades = _run_pair_backtest(bp1, bp2, bspread, bz, hr, s1c, s2c, 1, 1, 1.25, 1.0)
 print(f'Step 6: Single backtest = {time.time()-t0:.3f}s, trades={len(trades)}')

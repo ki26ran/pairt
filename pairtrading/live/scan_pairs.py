@@ -22,7 +22,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from common.market_data.cache import get_cache
-from PairTrading.live.cache import get_pair_cache
+from pairtrading.live.cache import get_pair_cache
 from configs.telegram_config import send_message as pt_send
 from configs.symbols import get_nifty200
 from configs.settings import LIVE, BROKER_NAME, BROKER_USERNAME
@@ -167,7 +167,7 @@ def _in_cooldown(pair_key):
 def load_thresholds():
     """Load thresholds from PairTrading DuckDB, fall back to JSON file."""
     try:
-        from PairTrading.live.cache import get_pair_cache
+        from pairtrading.live.cache import get_pair_cache
         th = get_pair_cache().load_thresholds()
         if th:
             return th

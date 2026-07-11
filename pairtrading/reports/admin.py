@@ -51,7 +51,7 @@ def _cleanup_all():
     
     # Clear PairTrading DuckDB (pairtrading.duckdb) — all tables
     try:
-        from PairTrading.live.cache import get_pair_cache
+        from pairtrading.live.cache import get_pair_cache
         import duckdb
         pair_cache = get_pair_cache()
         con = duckdb.connect(pair_cache.get_db_path())

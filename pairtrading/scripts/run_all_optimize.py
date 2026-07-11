@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import pandas as pd
 import numpy as np
-from PairTrading.reports.pair_trading import _run_pair_backtest, _compute_metrics
+from pairtrading.reports.pair_trading import _run_pair_backtest, _compute_metrics
 from common.market_data.cache import get_cache
 from datetime import datetime, timedelta
 

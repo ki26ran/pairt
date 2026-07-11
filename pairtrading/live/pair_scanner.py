@@ -12,7 +12,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
-from PairTrading.live.cache import get_pair_cache
+from pairtrading.live.cache import get_pair_cache
 from common.market_data.cache import get_cache
 from configs.symbols import get_nifty200
 THRESHOLDS_FILE = os.path.join(BASE_DIR, "configs", "pair_thresholds.json")

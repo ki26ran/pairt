@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import os, sys, json
 from configs.settings import DATA_DIR
 from configs.symbols import get_nifty200
-from PairTrading.live.cache import get_pair_cache
+from pairtrading.live.cache import get_pair_cache
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(BASE_DIR)

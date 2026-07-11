@@ -43,7 +43,7 @@ for mod, name in [
 
 # 2. DUCKDB CACHE
 print('\n=== 2. PairTrading DuckDB Cache ===')
-from PairTrading.live.cache import get_pair_cache
+from pairtrading.live.cache import get_pair_cache
 pc = get_pair_cache()
 
 stats = pc.get_stats()
@@ -134,7 +134,7 @@ check(f'{count} combos in {el:.1f}s', count == 65)
 
 # 5. SCAN THRESHOLDS
 print('\n=== 5. Scan Thresholds ===')
-from PairTrading.live.scan_pairs import load_thresholds as lt
+from pairtrading.live.scan_pairs import load_thresholds as lt
 check(f'load_thresholds', len(lt()) > 0)
 
 # 6. OTHER CACHES

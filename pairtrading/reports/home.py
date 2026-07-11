@@ -8,7 +8,7 @@ if BASE_DIR not in sys.path:
 ROOT = os.path.dirname(BASE_DIR)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-from PairTrading.live.cache import get_pair_cache
+from pairtrading.live.cache import get_pair_cache
 
 THRESHOLDS_FILE = os.path.join(BASE_DIR, "configs", "pair_thresholds.json")
 MAINTENANCE_LOG = os.path.join(BASE_DIR, "data", ".maintenance_last_run")
@@ -33,7 +33,7 @@ def _last_maintenance():
 
 def _run_maintenance():
     try:
-        from PairTrading.optimizer import maintenance
+        from pairtrading.optimizer import maintenance
         buf = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = buf

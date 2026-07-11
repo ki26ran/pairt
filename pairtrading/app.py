@@ -1,5 +1,9 @@
 import streamlit as st
-import os
+import os, sys
+
+_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _BASE not in sys.path:
+    sys.path.insert(0, _BASE)
 
 st.set_page_config(page_title="Pair Trading System", layout="wide")
 

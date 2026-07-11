@@ -5,7 +5,7 @@ Separate from market_data.duckdb to avoid Windows file-locking conflicts.
 import os, sys, duckdb, json
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from PairTrading.configs.symbols import get_nifty200
+from pairtrading.configs.symbols import get_nifty200
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(BASE_DIR)

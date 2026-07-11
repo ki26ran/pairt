@@ -5,7 +5,7 @@ from datetime import datetime
 from configs.settings import DATA_DIR
 from configs.symbols import get_nifty100, get_nifty200
 from core.pair_discovery import discover_pairs as run_discovery
-from PairTrading.live.cache import get_pair_cache
+from pairtrading.live.cache import get_pair_cache
 
 
 def _save_status(status):
