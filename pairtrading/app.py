@@ -10,7 +10,8 @@ st.set_page_config(page_title="Pair Trading System", layout="wide")
 PAGES = {
     "🏠 Home": "pairtrading.reports.home",
     "1️⃣ Discover Pairs": "pairtrading.reports.discover_pairs",
-    "2️⃣ Backtest & Optimize": "pairtrading.reports.pair_trading",
+    "2️⃣ Optimize": "pairtrading.reports.pair_trading",
+    "📊 Backtest": "pairtrading.reports.backtest",
     "3️⃣ Live Monitor": "pairtrading.live.pair_scanner",
     "⚙️ Scheduler": "pairtrading.reports.scheduler",
     "📖 Guide": "pairtrading.reports.about",
