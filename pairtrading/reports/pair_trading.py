@@ -318,31 +318,56 @@ def _show_impl():
     total_pairs = len(df_pairs)
     discovered_count = len(pairs_list) if pairs_list else 0
     st.info(f"**{discovered_count} discovered** + **{max(0, total_pairs - discovered_count)} from thresholds** = **{total_pairs} unique pairs** ({len(th_data)} have thresholds configured)")
-    if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True):
-        # Merge discovered pairs into thresholds file with default params
-        with open(THRESHOLDS_FILE) as f:
-            saved_th = json.load(f)
-        changed = 0
-        for _, r in df_pairs.iterrows():
-            pk = str(r.get("Stock1", "")) + "|" + str(r.get("Stock2", ""))
-            if pk not in saved_th:
-                saved_th[pk] = {"entry_z": 2.0, "exit_z": 1.0, "hr": float(r.get("Hedge_Ratio", 1.0))}
-                changed += 1
-        if changed:
+    col_opt, col_reset = st.columns([3, 1])
+    with col_opt:
+        if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True):
+            # Merge discovered pairs into thresholds file with default params
+            with open(THRESHOLDS_FILE) as f:
+                saved_th = json.load(f)
+            changed = 0
+            for _, r in df_pairs.iterrows():
+                pk = str(r.get("Stock1", "")) + "|" + str(r.get("Stock2", ""))
+                if pk not in saved_th:
+                    saved_th[pk] = {"entry_z": 2.0, "exit_z": 1.0, "hr": float(r.get("Hedge_Ratio", 1.0))}
+                    changed += 1
+            if changed:
+                with open(THRESHOLDS_FILE, "w") as f:
+                    json.dump(saved_th, f, indent=2)
+                st.info(f"Added {changed} new pairs to thresholds file. Optimizing all {total_pairs}...")
+            from pairtrading.optimizer import run as run_optimizer
+            with st.spinner(f"Optimizing {total_pairs} pairs — may take several minutes..."):
+                import io, contextlib
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    run_optimizer(months=6)
+                output = buf.getvalue()
+            with st.expander("Optimizer Results", expanded=True):
+                st.code(output[-3000:] if len(output) > 3000 else output)
+            st.success(f"Optimization complete! Thresholds updated.")
+            st.rerun()
+    with col_reset:
+        if st.button("🔄 Reset Defaults", use_container_width=True):
+            from pairtrading.live.cache import get_pair_cache
+            pc = get_pair_cache()
+            disc = pc.load_discovered_pairs()
+            if not disc:
+                st.warning("No discovered pairs to reset to. Run Discover Pairs first.")
+                st.rerun()
+            thresholds = {}
+            for row in disc:
+                s1 = row.get("Stock1") or row.get("stock1", "")
+                s2 = row.get("Stock2") or row.get("stock2", "")
+                key = f"{s1}|{s2}"
+                thresholds[key] = {
+                    "entry_z": 2.0,
+                    "exit_z": 0.5,
+                    "hr": float(row.get("hedge_ratio", row.get("Hedge_Ratio", 1.0))),
+                }
+            pc.save_thresholds(thresholds)
             with open(THRESHOLDS_FILE, "w") as f:
-                json.dump(saved_th, f, indent=2)
-            st.info(f"Added {changed} new pairs to thresholds file. Optimizing all {total_pairs}...")
-        from pairtrading.optimizer import run as run_optimizer
-        with st.spinner(f"Optimizing {total_pairs} pairs — may take several minutes..."):
-            import io, contextlib
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                run_optimizer(months=6)
-            output = buf.getvalue()
-        with st.expander("Optimizer Results", expanded=True):
-            st.code(output[-3000:] if len(output) > 3000 else output)
-        st.success(f"Optimization complete! Thresholds updated.")
-        st.rerun()
+                json.dump(thresholds, f, indent=2, default=str)
+            st.success(f"Reset {len(thresholds)} pairs to default thresholds (entry_z=2.0, exit_z=0.5)")
+            st.rerun()
 
     def _pair_label(r):
         s1n = str(r.get("Stock1", "")).replace(".NS", "")
