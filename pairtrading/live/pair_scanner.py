@@ -71,6 +71,13 @@ def _pnl(p, live_prices):
 
 
 def _icon(row):
+    if isinstance(row, str):
+        s = row.upper()
+        if "ENTRY" in s:
+            return "🔴" if "SHORT" in s else "🟢"
+        if "EXIT" in s:
+            return "🟢"
+        return "⚫"
     d = row.get("direction", "")
     if d == "LONG":
         return "🟢"
