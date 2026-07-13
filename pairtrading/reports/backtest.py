@@ -325,10 +325,10 @@ def show():
         st.subheader("Trade Log")
         tdf["entry_str"] = tdf["entry_date"].apply(lambda x: str(x)[:16])
         tdf["exit_str"] = tdf["exit_date"].apply(lambda x: str(x)[:16])
-        log_cols = ["entry_str", "exit_str", "s1", "s2", "entry_p1", "exit_p1", "entry_p2", "exit_p2",
+        log_cols = ["entry_str", "exit_str", "s1", "s2", "direction", "entry_p1", "exit_p1", "entry_p2", "exit_p2",
                     "pnl_s1", "pnl_s2", "total_pnl", "reason"]
         log_df = tdf[log_cols].copy()
-        log_df.columns = ["Entry Time", "Exit Time", "Leg1", "Leg2",
+        log_df.columns = ["Entry Time", "Exit Time", "Leg1", "Leg2", "Dir",
                           "L1 Entry", "L1 Exit", "L2 Entry", "L2 Exit",
                           "L1 P&L", "L2 P&L", "Total P&L", "Reason"]
         for c in ["L1 Entry", "L1 Exit", "L2 Entry", "L2 Exit"]:
