@@ -11,3 +11,7 @@ venv/
 
 # Per-machine config — may contain secrets
 common/market_data/config.prod.json
+
+# Broker credentials (per-machine)
+pairtrading/configs/broker_config.json
+pairtrading/configs/telegram_config.json
