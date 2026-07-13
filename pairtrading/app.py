@@ -16,6 +16,7 @@ PAGES = {
     "📊 Backtest": "pairtrading.reports.backtest",
     "3️⃣ Live Monitor": "pairtrading.live.pair_scanner",
     "⚙️ Scheduler": "pairtrading.reports.scheduler",
+    "⚙️ Admin": "pairtrading.reports.admin",
     "📖 Guide": "pairtrading.reports.about",
 }
 PAGE_ORDER = list(PAGES.keys())
