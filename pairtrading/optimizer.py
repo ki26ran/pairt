@@ -20,6 +20,7 @@ if os.path.join(ROOT, "common") not in sys.path:
     sys.path.insert(0, os.path.join(ROOT, "common"))
 from pairtrading.configs.symbols import get_nifty200
 from common.market_data.cache import get_cache
+from pairtrading.reports.backtest import _option_pnl
 
 THRESHOLDS_FILE = os.path.join(BASE_DIR, "configs", "pair_thresholds.json")
 ROLL_WIN = 63  # rolling window for z-score — aligned with scanner (63 hours ~ 8 trading days)
@@ -110,8 +111,9 @@ def compute_z_score_series(closes, s1, s2, hr_val, roll_win=ROLL_WIN):
     p2 = p2.loc[zs.index]
     return zs, p1, p2
 
-def simulate_thresholds(zs, p1, p2, entry_z, exit_z):
-    """Simulate trades for a given (entry_z, exit_z) threshold pair."""
+def simulate_thresholds(zs, p1, p2, entry_z, exit_z, lot1=1, lot2=1):
+    """Simulate trades for a given (entry_z, exit_z) threshold pair.
+    Uses OPTIONS pricing (ATM premium at entry, intrinsic at exit)."""
     trades = []
     in_position = False
     position = None
@@ -151,12 +153,16 @@ def simulate_thresholds(zs, p1, p2, entry_z, exit_z):
                     exit_reason = "timeout"
 
             if exit_reason:
-                if position["direction"] == "LONG":
-                    pnl_p1 = p1.iloc[i] - position["entry_p1"]
-                    pnl_p2 = position["entry_p2"] - p2.iloc[i]
-                else:
-                    pnl_p1 = position["entry_p1"] - p1.iloc[i]
-                    pnl_p2 = p2.iloc[i] - position["entry_p2"]
+                ep1 = float(position["entry_p1"])
+                ep2 = float(position["entry_p2"])
+                xp1 = float(p1.iloc[i])
+                xp2 = float(p2.iloc[i])
+                tick1 = 0.05 if 0.05 > ep1 * 0.001 else ep1 * 0.001
+                tick2 = 0.05 if 0.05 > ep2 * 0.001 else ep2 * 0.001
+                atm1 = round(ep1 / tick1) * tick1
+                atm2 = round(ep2 / tick2) * tick2
+                pnl_p1 = _option_pnl(ep1, xp1, atm1, "SHORT", 1)  * lot1
+                pnl_p2 = _option_pnl(ep2, xp2, atm2, "LONG", 1)   * lot2
                 trades.append({
                     "direction": position["direction"], "entry_z": position["entry_z"], "exit_z": z,
                     "entry_time": str(position["entry_time"]), "exit_time": str(idx),
@@ -183,7 +189,7 @@ def score_thresholds(trades):
     score = sharpe + win_rate * 3.0 + (total_pnl / 5000) * 0.5
     return round(score, 3), round(sharpe, 3), total, round(win_rate * 100, 1), round(total_pnl, 2)
 
-def walkforward_optimize(zs, p1, p2, entry_vals, exit_vals, n_windows=3):
+def walkforward_optimize(zs, p1, p2, entry_vals, exit_vals, n_windows=3, lot1=1, lot2=1):
     """Walk-forward grid search: train on expanding windows, average score.
 
     Returns (best_entry, best_exit, best_score, best_stats).
@@ -211,7 +217,7 @@ def walkforward_optimize(zs, p1, p2, entry_vals, exit_vals, n_windows=3):
                 zs_tr = zs.iloc[:tr_end[1]]
                 p1_tr = p1.loc[zs_tr.index]
                 p2_tr = p2.loc[zs_tr.index]
-                trades = simulate_thresholds(zs_tr, p1_tr, p2_tr, entry_z, exit_z)
+                trades = simulate_thresholds(zs_tr, p1_tr, p2_tr, entry_z, exit_z, lot1, lot2)
                 sc, _, n_t, _, _ = score_thresholds(trades)
                 wf_scores.append(sc)
                 total_trades += n_t
@@ -221,7 +227,7 @@ def walkforward_optimize(zs, p1, p2, entry_vals, exit_vals, n_windows=3):
                 best_entry = entry_z
                 best_exit = exit_z
                 # Final full-sample stats for display
-                full_trades = simulate_thresholds(zs, p1, p2, entry_z, exit_z)
+                full_trades = simulate_thresholds(zs, p1, p2, entry_z, exit_z, lot1, lot2)
                 _, best_sharpe, best_n, best_wr, best_pnl = score_thresholds(full_trades)
                 best_stats = (best_sharpe, best_n + total_trades * 0, best_wr, best_pnl)
 
@@ -286,6 +292,9 @@ def run(months=6, pair_filter=None):
             print("  [%d/%d] %s: SKIP (missing data)" % (i+1, len(thresholds), pair_key))
             continue
 
+        lot1 = _lot_size(s1)
+        lot2 = _lot_size(s2)
+
         print("  [%d/%d] %s (hr=%.4f, old entry=%.2f exit=%.2f)..." % (
             i+1, len(thresholds), pair_key, hr_val, old_entry, old_exit), end=" ", flush=True)
 
@@ -295,28 +304,14 @@ def run(months=6, pair_filter=None):
             continue
 
         best_entry, best_exit, best_score, best_stats = walkforward_optimize(
-            zs, p1, p2, entry_vals, exit_vals, n_windows=3)
+            zs, p1, p2, entry_vals, exit_vals, n_windows=3, lot1=lot1, lot2=lot2)
 
         if best_entry is not None:
-            lot1 = _lot_size(s1)
-            lot2 = _lot_size(s2)
 
-            # Scale per-unit P&L by actual lot sizes
-            def _scale_trades(trades):
-                scaled = []
-                for t in trades:
-                    t = dict(t)
-                    t["pnl"] = t["pnl_p1"] * lot1 + t["pnl_p2"] * lot2
-                    scaled.append(t)
-                return scaled
-
-            old_trades_raw = simulate_thresholds(zs, p1, p2, old_entry, old_exit)
-            old_trades = _scale_trades(old_trades_raw)
+            old_trades = simulate_thresholds(zs, p1, p2, old_entry, old_exit, lot1, lot2)
             old_score, _, _, _, old_pnl = score_thresholds(old_trades)
 
-            # Best full-sample trades scaled
-            best_trades_raw = simulate_thresholds(zs, p1, p2, best_entry, best_exit)
-            best_trades = _scale_trades(best_trades_raw)
+            best_trades = simulate_thresholds(zs, p1, p2, best_entry, best_exit, lot1, lot2)
             best_score_val, best_sharpe_val, best_n_val, best_wr_val, best_pnl_val = score_thresholds(best_trades)
             best_score = best_score_val if best_score_val > -999 else best_score
             best_stats = (best_sharpe_val, best_n_val, best_wr_val, best_pnl_val)
