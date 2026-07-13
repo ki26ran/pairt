@@ -10,9 +10,20 @@ ROOT = os.path.dirname(BASE_DIR)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from common.market_data.provider import is_config_locked, _load_config
+
 DATA_DIR = os.path.join(BASE_DIR, "data")
 CONFIGS_DIR = os.path.join(BASE_DIR, "configs")
 BT_DIR = os.path.join(DATA_DIR, "bt_results")
+_MARKDOWN_LOCK_HELP = """
+**When locked:**
+- 🔍 Discover Pairs disabled
+- ⚡ Optimize All disabled
+- 🔄 Reset Defaults disabled
+- Only Monitor and Backtest are active
+
+Unlock only when you need to change pairs or re-optimize.
+"""
 
 def _cleanup_all():
     """Delete all PairTrading runtime data. Returns (success_count, errors)."""
@@ -92,7 +103,7 @@ def _cleanup_all():
 def show():
     st.title("PairTrading Admin")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["Telegram", "Broker", "Cleanup / Reset", "About"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Telegram", "Broker", "Config Lock", "Cleanup / Reset", "About"])
 
     with tab1:
         from pairtrading.configs.telegram_config import get_config, update_config, is_configured, send_message
@@ -160,6 +171,34 @@ def show():
             st.success("Broker config saved. Restart scan_pairs.py to apply.")
 
     with tab3:
+        st.subheader("🔒 Configuration Lock")
+        st.caption("Protects pairs and thresholds from accidental changes. Lock during normal operation.")
+
+        _locked = is_config_locked()
+        _cfg = _load_config()
+        _env = os.environ.get("APP_ENV", "dev")
+
+        st.info(f"**Environment:** `{_env}`  ·  **Host:** `{_cfg.get('host', '?')}`  ·  **Provider:** `{_cfg.get('portfolio_providers', {}).get('__default__', '?')}`")
+
+        locked = st.checkbox("Config Locked", value=_locked, key="pt_locked")
+        st.markdown(_MARKDOWN_LOCK_HELP)
+
+        if st.button("Save Lock Setting", type="primary", key="pt_save_lock"):
+            config_path = os.path.join(ROOT, "common", "market_data", f"config.{_env}.json")
+            if not os.path.exists(config_path):
+                config_path = os.path.join(ROOT, "common", "market_data", "config.json")
+            try:
+                with open(config_path) as f:
+                    d = json.load(f)
+                d["config_locked"] = locked
+                with open(config_path, "w") as f:
+                    json.dump(d, f, indent=2)
+                st.success(f"Config locked set to `{locked}` in `{os.path.basename(config_path)}`. Restarting...")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to save: {e}")
+
+    with tab4:
         st.subheader("🗑️ Complete Cleanup & Reset")
         st.warning(
             "**This will permanently delete ALL PairTrading data from `pairtrading.duckdb`:**\n"
@@ -216,10 +255,12 @@ def show():
                 exists = os.path.exists(path)
                 st.write(f"  {'✅' if exists else '❌'} {name}")
 
-    with tab3:
+    with tab5:
         st.markdown("""
         **PairTrading Admin:**
         - **Telegram** — configure the dedicated bot for pair trading alerts
+        - **Broker** — toggle live trading on/off
+        - **Config Lock** — protect pairs from accidental changes
         - **Cleanup / Reset** — wipe all data and start fresh
         - New pairs discovered via **Discover Pairs** page
         - Thresholds optimized in **Backtest & Optimize** page
