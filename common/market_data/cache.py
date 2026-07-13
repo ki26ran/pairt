@@ -946,8 +946,61 @@ class DataCache:
             if i + 30 < len(ns_tickers):
                 time.sleep(2)
         self._update_sync_log(stored, interval, end)
+        if interval in ("hourly", "1h"):
+            self._auto_fix_splits()
         return {"timeframe": interval, "start": start, "end": end, "batches_fetched": count,
                 "tickers": len(tickers)}
+
+    def _auto_fix_splits(self):
+        """Auto-detect and correct unadjusted stock splits in hourly data.
+        
+        Scans for overnight price jumps > 50% between consecutive bars
+        (indicating post-split data wasn't adjusted upward). Applies
+        correction by multiplying all post-split bars by the split ratio.
+        """
+        try:
+            con = self._db_write()
+            rows = con.execute("""
+                WITH split_candidates AS (
+                    SELECT ticker, datetime_ist, close,
+                           LAG(close) OVER (PARTITION BY ticker ORDER BY datetime_ist) as prev_close,
+                           MIN(datetime_ist) OVER (PARTITION BY ticker) as first_date
+                    FROM hourly_bars
+                )
+                SELECT ticker, datetime_ist, prev_close, close,
+                       ROUND(prev_close / NULLIF(close, 0), 1) as ratio
+                FROM split_candidates
+                WHERE prev_close IS NOT NULL
+                  AND close > 0 AND prev_close > 0
+                  AND (prev_close / NULLIF(close, 0) BETWEEN 1.8 AND 50)
+                  AND prev_close > close * 1.8
+                  AND datetime_ist::TIME >= '09:00:00'
+                  AND prev_close > 10
+                ORDER BY (prev_close / NULLIF(close, 0)) DESC
+            """).fetchall()
+            
+            seen = set()
+            for ticker, dt, prev, curr, ratio in rows:
+                if ticker in seen:
+                    continue
+                seen.add(ticker)
+                ratio_int = max(2, min(50, int(round(ratio))))
+                count = con.execute("""
+                    UPDATE hourly_bars SET
+                        open = ROUND(open * ?, 2),
+                        high = ROUND(high * ?, 2),
+                        low = ROUND(low * ?, 2),
+                        close = ROUND(close * ?, 2)
+                    WHERE ticker = ? AND datetime_ist >= ?
+                """, [ratio_int, ratio_int, ratio_int, ratio_int, ticker, dt]).fetchone()[0]
+                con.commit()
+                print(f"  [AUTO-FIX] {ticker}: {ratio_int}:1 split at {dt}, {count} bars adjusted")
+            
+            if seen:
+                print(f"  [AUTO-FIX] Corrected {len(seen)} stock split(s)")
+            con.close()
+        except Exception as e:
+            print(f"  [AUTO-FIX] Error: {e}")
 
     def _update_sync_log(self, tickers: set, timeframe: str, date_str: str, bar_count: int = 0):
         if not tickers:
