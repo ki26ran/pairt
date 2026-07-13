@@ -235,10 +235,12 @@ def show():
                     curr_p1 = float(cp1); curr_p2 = float(cp2)
                     ep1 = float(pos["entry_p1"]); ep2 = float(pos["entry_p2"])
                     if use_options:
-                        tick = 0.05 if 0.05 > ep1 * 0.001 else ep1 * 0.001
-                        atm = round(ep1 / tick) * tick
-                        sl_pnl_s1 = _option_pnl(ep1, curr_p1, atm, "SHORT", pd_["lot1"])
-                        sl_pnl_s2 = _option_pnl(ep2, curr_p2, atm, "LONG", pd_["lot2"])
+                        tick1 = 0.05 if 0.05 > ep1 * 0.001 else ep1 * 0.001
+                        tick2 = 0.05 if 0.05 > ep2 * 0.001 else ep2 * 0.001
+                        atm1 = round(ep1 / tick1) * tick1
+                        atm2 = round(ep2 / tick2) * tick2
+                        sl_pnl_s1 = _option_pnl(ep1, curr_p1, atm1, "SHORT", pd_["lot1"])
+                        sl_pnl_s2 = _option_pnl(ep2, curr_p2, atm2, "LONG", pd_["lot2"])
                     else:
                         sl_pnl_s1 = (ep1 - curr_p1) * pd_["lot1"]
                         sl_pnl_s2 = (curr_p2 - ep2) * pd_["lot2"]
@@ -256,10 +258,12 @@ def show():
 
                 if exit_reason:
                     if use_options:
-                        tick = 0.05 if 0.05 > float(pos["entry_p1"]) * 0.001 else float(pos["entry_p1"]) * 0.001
-                        atm = round(float(pos["entry_p1"]) / tick) * tick
-                        pnl_s1 = _option_pnl(float(pos["entry_p1"]), float(cp1), atm, "SHORT", pd_["lot1"])
-                        pnl_s2 = _option_pnl(float(pos["entry_p2"]), float(cp2), atm, "LONG", pd_["lot2"])
+                        tick1 = 0.05 if 0.05 > float(pos["entry_p1"]) * 0.001 else float(pos["entry_p1"]) * 0.001
+                        tick2 = 0.05 if 0.05 > float(pos["entry_p2"]) * 0.001 else float(pos["entry_p2"]) * 0.001
+                        atm1 = round(float(pos["entry_p1"]) / tick1) * tick1
+                        atm2 = round(float(pos["entry_p2"]) / tick2) * tick2
+                        pnl_s1 = _option_pnl(float(pos["entry_p1"]), float(cp1), atm1, "SHORT", pd_["lot1"])
+                        pnl_s2 = _option_pnl(float(pos["entry_p2"]), float(cp2), atm2, "LONG", pd_["lot2"])
                     else:
                         pnl_s1 = (float(pos["entry_p1"]) - float(cp1)) * pd_["lot1"]
                         pnl_s2 = (float(cp2) - float(pos["entry_p2"])) * pd_["lot2"]
