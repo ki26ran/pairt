@@ -586,8 +586,8 @@ class PairTradingCache:
                       data.get("last_updated", datetime.now().isoformat()),
                       p.get("s1", ""), p.get("s2", ""),
                       p.get("s1_price", 0), p.get("s2_price", 0),
-                      p.get("z_score", 0), p.get("entry_z", 0),
-                      p.get("exit_z", 0), p.get("signal", "NONE"),
+                      p.get("Z-score", 0), p.get("Entry Z", 0),
+                      p.get("Exit Z", 0), p.get("Signal", "NONE"),
                       p.get("hr", 1)))
             con.commit()
             return True
