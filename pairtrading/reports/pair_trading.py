@@ -15,6 +15,7 @@ if ROOT not in sys.path:
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 from common.market_data.cache import get_cache
+from common.market_data.provider import is_config_locked
 
 PAIRS_FILE = os.path.join(DATA_DIR, "pairs.csv")
 BT_DIR = os.path.join(DATA_DIR, "bt_results")
@@ -315,12 +316,19 @@ def _show_impl():
     st.divider()
 
     # ── Batch optimize all pairs ──────────────────────────────
+    _locked = is_config_locked()
+    if _locked:
+        st.warning("🔒 Configuration is locked (config_locked=true). Optimization and threshold changes are disabled.")
+
     total_pairs = len(df_pairs)
     discovered_count = len(pairs_list) if pairs_list else 0
     st.info(f"**{discovered_count} discovered** + **{max(0, total_pairs - discovered_count)} from thresholds** = **{total_pairs} unique pairs** ({len(th_data)} have thresholds configured)")
     col_opt, col_reset = st.columns([3, 1])
     with col_opt:
-        if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True):
+        if st.button(f"⚡ Optimize All {total_pairs} Pairs", type="primary", use_container_width=True, disabled=_locked):
+            if is_config_locked():
+                st.error("🔒 Config is locked. Optimization disabled.")
+                st.rerun()
             # Merge discovered pairs into thresholds file with default params
             with open(THRESHOLDS_FILE) as f:
                 saved_th = json.load(f)
@@ -346,8 +354,7 @@ def _show_impl():
             st.success(f"Optimization complete! Thresholds updated.")
             st.rerun()
     with col_reset:
-        if st.button("🔄 Reset Defaults", use_container_width=True):
-            from pairtrading.live.cache import get_pair_cache
+        if st.button("🔄 Reset Defaults", use_container_width=True, disabled=_locked):
             pc = get_pair_cache()
             disc = pc.load_discovered_pairs()
             if not disc:

@@ -1,6 +1,7 @@
 {
   "host": "localhost",
   "os": "windows",
+  "config_locked": false,
   "db_path": "../../data/market_data.duckdb",
   "credential_db": "../../lib/ganah/ganah/auth/auth.duckdb",
   "portfolio_providers": {

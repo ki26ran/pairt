@@ -30,6 +30,11 @@ def _load_config():
     return {}
 
 
+def is_config_locked():
+    """Check if config changes are locked (production guard)."""
+    return bool(_load_config().get("config_locked", False))
+
+
 class DataProvider(ABC):
 
     @abstractmethod

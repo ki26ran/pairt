@@ -6,6 +6,7 @@ from pairtrading.configs.settings import DATA_DIR
 from pairtrading.configs.symbols import get_nifty100, get_nifty200
 from pairtrading.core.pair_discovery import discover_pairs as run_discovery
 from pairtrading.live.cache import get_pair_cache
+from common.market_data.provider import is_config_locked
 
 
 def _save_status(status):
@@ -19,6 +20,10 @@ def _load_status():
 
 
 def _discover(corr, pvalue, years, universe):
+    if is_config_locked():
+        _save_status({"status": "failed", "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                       "error": "Config is locked (config_locked=true). Discovery disabled."})
+        return
     _save_status({"status": "running", "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
     buf = io.StringIO()
     try:
@@ -118,7 +123,11 @@ def show():
     with pc4:
         universe = st.selectbox("Universe", ["Nifty 100", "Nifty 200"], index=0)
 
-    if st.button("🔍 Discover Pairs", disabled=running, key="disc_btn"):
+    _locked = is_config_locked()
+    if _locked:
+        st.warning("🔒 Configuration is locked (config_locked=true). Discovery and threshold changes are disabled.")
+
+    if st.button("🔍 Discover Pairs", disabled=running or _locked, key="disc_btn"):
         st.session_state._disc_thread = threading.Thread(target=_discover, args=(corr, pval, years, universe), daemon=True)
         st.session_state._disc_thread.start()
         st.rerun()
@@ -135,7 +144,7 @@ def show():
 
             col_a, col_b = st.columns([1, 1])
             with col_a:
-                if st.button("⚙️ Configure for Trading", type="primary", key="cfg_trading"):
+                if st.button("⚙️ Configure for Trading", type="primary", key="cfg_trading", disabled=_locked):
                     ok, msg = _configure_discovered_as_thresholds()
                     if ok:
                         st.success(msg)
