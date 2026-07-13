@@ -11,6 +11,10 @@
     "name": "SHOONYA",
     "user": "FA138862"
   },
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
   "retention": {
     "daily": "1095 days",
     "hourly": "365 days",

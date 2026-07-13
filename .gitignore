@@ -8,3 +8,6 @@ venv/
 .venv/
 *.log
 .DS_Store
+
+# Per-machine config — may contain secrets
+common/market_data/config.prod.json

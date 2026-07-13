@@ -1,16 +1,35 @@
 """
 PairTrading Telegram config — per-machine, not in git.
-Stored at configs/telegram_config.json (gitignored).
+Reads from env-based config (config.{env}.json) first, then telegram_config.json.
 Provides get/send functions for PairTrading alert bot.
 """
 import os, json, socket
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "configs", "telegram_config.json")
+_CONF_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_FILE = os.path.join(_CONF_DIR, "configs", "telegram_config.json")
 HOST_TAG = "[" + socket.gethostname().replace("LAPTOP-", "WIN-")[:12] + "]"
 
 
+def _from_env_config():
+    """Try reading telegram settings from the unified env config."""
+    try:
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if _root not in os.sys.path:
+            os.sys.path.insert(0, _root)
+        from common.market_data.provider import _load_config
+        cfg = _load_config()
+        tg = cfg.get("telegram", {})
+        if tg.get("bot_token") and tg.get("chat_id"):
+            return tg
+    except Exception:
+        pass
+    return None
+
+
 def get_config():
+    tg = _from_env_config()
+    if tg:
+        return tg
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE) as f:
