@@ -58,7 +58,7 @@ def _render_pairs_table(df):
                  use_container_width=True, height=400)
 
 
-def _configure_discovered_as_thresholds():
+def _configure_discovered_as_thresholds(corr=None, pval=None, years=None, universe=None):
     """Replace all thresholds with the currently discovered pairs (default params)."""
     import json
     from pairtrading.configs.settings import DATA_DIR
@@ -80,6 +80,11 @@ def _configure_discovered_as_thresholds():
     th_path = os.path.join(os.path.dirname(DATA_DIR), "configs", "pair_thresholds.json")
     with open(th_path, "w") as f:
         json.dump(thresholds, f, indent=2, default=str)
+    # Save the discovery params used
+    if corr is not None:
+        pc.set_config("last_discovery_params", {
+            "corr": corr, "pval": pval, "years": years, "universe": universe
+        })
     return True, f"Configured {len(thresholds)} pairs for trading"
 
 
@@ -113,19 +118,32 @@ def show():
         time.sleep(0.5)
         st.rerun()
 
-    pc1, pc2, pc3, pc4 = st.columns(4)
-    with pc1:
-        corr = st.number_input("Corr ≥", min_value=0.0, max_value=1.0, value=0.80, step=0.05)
-    with pc2:
-        pval = st.number_input("P-val <", min_value=0.001, max_value=0.5, value=0.05, step=0.01, format="%.3f")
-    with pc3:
-        years = st.number_input("Years", min_value=1, max_value=5, value=2, step=1)
-    with pc4:
-        universe = st.selectbox("Universe", ["Nifty 100", "Nifty 200"], index=0)
-
     _locked = is_config_locked()
+
+    # ── Load last discovery params and show ──
+    _pair_cache = get_pair_cache()
+    _last = _pair_cache.get_config("last_discovery_params")
+    if _last:
+        st.info(f"📋 Last configured with: Corr≥{_last['corr']}, P-val<{_last['pval']}, Years={_last['years']}, {_last['universe']}")
+    elif _pair_cache.load_thresholds():
+        st.info(f"📋 {len(_pair_cache.load_thresholds())} pairs currently configured")
+
     if _locked:
         st.warning("🔒 Configuration is locked (config_locked=true). Discovery and threshold changes are disabled.")
+
+    pc1, pc2, pc3, pc4 = st.columns(4)
+    with pc1:
+        corr = st.number_input("Corr ≥", min_value=0.0, max_value=1.0,
+                               value=_last["corr"] if _last else 0.80, step=0.05)
+    with pc2:
+        pval = st.number_input("P-val <", min_value=0.001, max_value=0.5,
+                               value=_last["pval"] if _last else 0.05, step=0.01, format="%.3f")
+    with pc3:
+        years = st.number_input("Years", min_value=1, max_value=5,
+                                value=_last["years"] if _last else 2, step=1)
+    with pc4:
+        universe = st.selectbox("Universe", ["Nifty 100", "Nifty 200"],
+                                index=1 if _last and _last.get("universe") == "Nifty 200" else 0)
 
     if st.button("🔍 Discover Pairs", disabled=running or _locked, key="disc_btn"):
         st.session_state._disc_thread = threading.Thread(target=_discover, args=(corr, pval, years, universe), daemon=True)
@@ -145,7 +163,7 @@ def show():
             col_a, col_b = st.columns([1, 1])
             with col_a:
                 if st.button("⚙️ Configure for Trading", type="primary", key="cfg_trading", disabled=_locked):
-                    ok, msg = _configure_discovered_as_thresholds()
+                    ok, msg = _configure_discovered_as_thresholds(corr, pval, years, universe)
                     if ok:
                         st.success(msg)
                         pair_cache.set_config("discovery_status", {"status": "configured",
