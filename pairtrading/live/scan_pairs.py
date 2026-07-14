@@ -76,101 +76,114 @@ def _strike_interval(price):
     return 500
 
 
-def get_live_option(symbol, option_type, api):
-    """Resolve an ATM option contract via Shoonya live API.
+def resolve_option_contract(symbol, option_type, min_dte=ENTRY_MIN_DTE):
+    """Resolve ATM option contract from cached NFO symbols table.
     
-    Args:
-        symbol: 'TCS.NS' or 'WIPRO.NS' etc.
-        option_type: 'PE' or 'CE'
-        api: Authenticated Shoonya NorenApi instance
-    
-    Returns:
-        dict with trading_symbol, lot_size, strike, expiry, bid, ask, ltp
-        or None on failure.
+    Falls back to the NFO symbols DuckDB table (synced from ngen26).
+    Returns dict with trading_symbol, lot_size, strike, expiry, bid, ask
+    or None on failure.
     """
     try:
+        from common.market_data.cache import get_cache
+        import duckdb
+        cache = get_cache()
+        con = duckdb.connect(cache.db_path, read_only=True)
         clean = symbol.replace(".NS", "").replace(".BO", "")
-        # Get current underlying price via searchscrip
-        scrip = api.searchscrip(exchange="NSE", searchtext=clean + "-EQ")
-        if not scrip or scrip.get("stat") != "Ok":
-            print(f"  [LIVE] searchscrip failed for {symbol}")
-            return None
-        underlying = float(scrip["values"][0]["lp"])
-        token = scrip["values"][0]["token"]
         
-        # Round to ATM strike
+        # Get current underlying price
+        price_row = con.execute(
+            "SELECT close FROM hourly_bars WHERE ticker = ? ORDER BY datetime_ist DESC LIMIT 1",
+            [clean]
+        ).fetchone()
+        if not price_row:
+            con.close()
+            return None
+        underlying = float(price_row[0])
+        
+        # Find ATM strike
         interval = _strike_interval(underlying)
-        atm_strike = round(underlying / interval) * interval
+        target_strike = round(underlying / interval) * interval
         
-        # Get option chain from Shoonya
-        chain = api.get_option_chain("NFO", clean + "-EQ", str(atm_strike), count=3)
-        if not chain or chain.get("stat") != "Ok":
-            print(f"  [LIVE] get_option_chain failed for {symbol}")
+        # Search for the ATM option in NFO table, preferring higher DTE
+        opt_map = {"PE": "PE", "CE": "CE"}
+        nfo_type = opt_map.get(option_type, option_type)
+        
+        rows = con.execute("""
+            SELECT trading_symbol, strike_price, expiry, lot_size 
+            FROM nfo_symbols 
+            WHERE symbol = ? AND option_type = ? 
+              AND strike_price >= ? AND strike_price <= ?
+              AND expiry > CURRENT_DATE
+            ORDER BY ABS(strike_price - ?), expiry
+            LIMIT 5
+        """, [clean, nfo_type, target_strike - interval, target_strike + interval, target_strike]).fetchall()
+        con.close()
+        
+        if not rows:
             return None
         
-        values = chain.get("values", [])
-        for opt in values:
-            if opt.get("optt") == option_type:
-                # Get live quote for bid/ask
-                opt_quote = api.get_quotes("NFO", opt["token"])
-                if opt_quote and opt_quote.get("stat") == "Ok":
-                    return {
-                        "trading_symbol": opt["tsym"],
-                        "token": opt["token"],
-                        "strike": float(opt["strprc"]),
-                        "expiry": opt["exd"],
-                        "lot_size": int(float(opt.get("lsz", 1))),
-                        "bid": float(opt_quote.get("bp", 0)),
-                        "ask": float(opt_quote.get("sp", 0)),
-                        "ltp": float(opt_quote.get("lp", 0)),
-                    }
-        print(f"  [LIVE] No {option_type} found in option chain for {symbol}")
-        return None
+        # Pick the closest strike with sufficient DTE
+        best = None
+        for r in rows:
+            expiry = r[2]
+            dte = (expiry - datetime.now().date()).days if hasattr(expiry, 'date') else 99
+            if dte >= min_dte:
+                best = {
+                    "trading_symbol": r[0],
+                    "strike": float(r[1]),
+                    "expiry": str(r[2]),
+                    "lot_size": int(r[3]),
+                    "dte": dte,
+                }
+                break
+        
+        if not best:
+            # Take whatever is available (even if low DTE)
+            r = rows[0]
+            best = {
+                "trading_symbol": r[0],
+                "strike": float(r[1]),
+                "expiry": str(r[2]),
+                "lot_size": int(r[3]),
+                "dte": (r[2] - datetime.now().date()).days if hasattr(r[2], 'date') else 99,
+            }
+        
+        # Estimate ATM premium (~2% of underlying for ATM option)
+        best["estimated_premium"] = round(underlying * 0.02, 2)
+        best["limit_price"] = round(underlying * 0.03, 2)  # generous limit (3%)
+        return best
     except Exception as e:
-        print(f"  [LIVE] Error resolving {symbol} {option_type}: {e}")
+        print(f"  [NFO] Error resolving {symbol} {option_type}: {e}")
         return None
 
 
 def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
     """Place a pair entry order using options (PE on s1, CE on s2).
-    Uses Shoonya live API for option chain + pricing.
-    LIMIT orders at ask price. NO equity fallback."""
+    Resolves contracts from cached NFO table + LIMIT orders."""
     api = _get_broker_api()
     if api is None or not LIVE:
         return None, None, None
     
     try:
-        nfo1 = get_live_option(s1, "PE", api)
-        nfo2 = get_live_option(s2, "CE", api)
+        nfo1 = resolve_option_contract(s1, "PE", ENTRY_MIN_DTE)
+        nfo2 = resolve_option_contract(s2, "CE", ENTRY_MIN_DTE)
         if not nfo1 or not nfo2:
             print(f"  Cannot resolve options for {s1}/{s2} — skipping trade")
             return None, None, None
         
-        # Check bid-ask spread — skip if too wide (>50% of premium)
-        for name, nfo in [("PE on " + s1, nfo1), ("CE on " + s2, nfo2)]:
-            if nfo["ask"] > 0 and nfo["bid"] > 0:
-                spread_pct = (nfo["ask"] - nfo["bid"]) / nfo["ask"] * 100
-                if spread_pct > 50:
-                    print(f"  Skip {name}: bid-ask spread {spread_pct:.0f}% too wide")
-                    return None, None, None
-                if spread_pct > 20:
-                    print(f"  Wide spread for {name}: {spread_pct:.0f}% — placing anyway")
-        
         from ganah import place_live_order
         qty1 = max(1, int(round(nfo1["lot_size"] * lot_scale)))
         qty2 = max(1, int(round(nfo2["lot_size"] * lot_scale)))
-        price1 = nfo1["ask"] if nfo1["ask"] > 0 else nfo1["ltp"] * 1.05
-        price2 = nfo2["ask"] if nfo2["ask"] > 0 else nfo2["ltp"] * 1.05
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         remarks = f"PT_{direction[:4]}_{clean_s1}_{z_score:.2f}_L{lot_scale:.1f}"
         
-        print(f"  {s1}: {nfo1['trading_symbol']} lot={nfo1['lot_size']} bid={nfo1['bid']} ask={nfo1['ask']}")
-        print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} bid={nfo2['bid']} ask={nfo2['ask']}")
+        print(f"  {s1}: {nfo1['trading_symbol']} lot={nfo1['lot_size']} strike={nfo1['strike']} limit=₹{nfo1['limit_price']}")
+        print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} strike={nfo2['strike']} limit=₹{nfo2['limit_price']}")
         
         oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
-                                exchange="NFO", product_type="I", price_type="LMT", price=price1)
+                                exchange="NFO", product_type="I", price_type="LMT", price=nfo1["limit_price"])
         oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
-                                exchange="NFO", product_type="I", price_type="LMT", price=price2)
+                                exchange="NFO", product_type="I", price_type="LMT", price=nfo2["limit_price"])
         print(f"  Orders placed: {oid1}, {oid2}")
         return oid1, nfo1["trading_symbol"], nfo1["expiry"]
     except Exception as e:
@@ -185,19 +198,16 @@ def _place_pair_exit(s1, direction, reason, z_score):
         return
     try:
         from ganah import place_live_order
-        # For exit, we sell the options we bought (reverse side)
-        exit_side = "SHORT"
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])
         remarks = f"PT_{reason_short}_{clean_s1}_{z_score:.2f}"
         
-        # Resolve via live API to get current option symbol and bid price
-        nfo = get_live_option(s1, "PE", api)
+        nfo = resolve_option_contract(s1, "PE", 0)
         if nfo:
-            price = nfo["bid"] if nfo["bid"] > 0 else nfo["ltp"] * 0.95
-            place_live_order(nfo["trading_symbol"], exit_side, nfo["lot_size"], remarks,
+            price = round(nfo["estimated_premium"] * 0.5, 2)  # exit at half premium (conservative)
+            place_live_order(nfo["trading_symbol"], "SHORT", nfo["lot_size"], remarks,
                             exchange="NFO", product_type="I", price_type="LMT", price=price)
-            print(f"  Exit order placed: {s1} {nfo['trading_symbol']} bid={nfo['bid']}")
+            print(f"  Exit order placed: {s1} {nfo['trading_symbol']}")
         else:
             print(f"  Cannot resolve option for exit on {s1} — skipping")
     except Exception as e:
