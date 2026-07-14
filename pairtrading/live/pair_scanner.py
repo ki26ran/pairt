@@ -179,6 +179,68 @@ def show():
     else:
         st.info("No open positions — waiting for z-score to cross entry threshold.")
 
+    # -- Broker Positions (actual option contracts) --
+    st.divider()
+    st.subheader("📊 Broker Option Positions")
+    try:
+        from ganah import setup_api as _sapi, get_pair_cache as _gpc
+        from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
+        _ba = _sapi(BROKER_NAME, BROKER_USERNAME)
+        _broker_pos = _ba.get_positions()
+        _pair_th = _gpc().load_thresholds()
+        
+        if isinstance(_broker_pos, list) and len(_broker_pos) > 0:
+            _opt_rows = []
+            for _p in _broker_pos:
+                # Show only NFO option positions with open quantity
+                _inst = _p.get("instname", "")
+                _net = int(_p.get("netqty", 0))
+                if _inst != "OPTSTK" or _net == 0:
+                    continue
+                
+                _tsym = _p.get("tsym", "")
+                _side = "BUY" if _net > 0 else "SELL"
+                _qty = abs(_net)
+                _avg = float(_p.get("netavgprc", 0))
+                _ltp = float(_p.get("lp", 0))
+                _urmtom = float(_p.get("urmtom", 0))
+                _rpnl = float(_p.get("rpnl", 0))
+                _total_pnl = _urmtom + _rpnl
+                
+                # Identify which pair this belongs to
+                _pair_tag = ""
+                for _pk in (_pair_th or {}):
+                    _s1 = _pk.split("|")[0].replace(".NS", "")
+                    _s2 = _pk.split("|")[1].replace(".NS", "")
+                    if _s1 in _tsym or _s2 in _tsym:
+                        _pair_tag = f"{_s1}/{_s2}"
+                        break
+                
+                _opt_rows.append({
+                    "Symbol": _tsym[:20],
+                    "Side": _side,
+                    "Qty": _qty,
+                    "Avg": round(_avg, 2),
+                    "LTP": round(_ltp, 2),
+                    "MTM P&L": round(_urmtom, 2),
+                    "Realized": round(_rpnl, 2),
+                    "Total P&L": round(_total_pnl, 2),
+                    "Pair": _pair_tag,
+                })
+            
+            if _opt_rows:
+                _df = pd.DataFrame(_opt_rows)
+                _df_styled = _df.style.map(_color_pnl, subset=["MTM P&L", "Realized", "Total P&L"])
+                st.dataframe(_df_styled, use_container_width=True, hide_index=True)
+                _bp_total = sum(r["Total P&L"] for r in _opt_rows)
+                st.caption(f"Net broker option P&L: ₹{_bp_total:+,.0f}")
+            else:
+                st.info("No open option positions at broker.")
+        else:
+            st.info("No position data from broker.")
+    except Exception as _e:
+        st.caption(f"Broker positions unavailable: {_e}")
+
     # -- Charts for open positions --
     if open_pos:
         st.divider()
