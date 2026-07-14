@@ -309,21 +309,56 @@ def show():
                 _lz = float(_z.iloc[-1])
                 
                 if _lz >= _ez:
-                    _dir = "SHORT"
+                    _dir = "🔴 SHORT"
+                    _dir_icon = "🔴"
                 elif _lz <= -_ez:
-                    _dir = "LONG"
+                    _dir = "🟢 LONG"
+                    _dir_icon = "🟢"
                 else:
-                    _dir = "—"
+                    _icon_z = "🔴" if _lz > 0 else "🟢" if _lz < 0 else "⚪"
+                    _dir = f"{_icon_z} {_lz:+.2f}"
+                    _dir_icon = _icon_z
                 
-                _active = "✅" if _pk in open_pos else ""
-                _rows.append({"Pair": f"{_s1.replace('.NS','')}/{_s2.replace('.NS','')}",
-                              "Z-score": round(_lz, 2), "Entry Z": _ez, "Exit Z": _xz,
-                              "Dir": _dir, "": _active})
+                _active_flag = "✅" if _pk in open_pos else ""
+                _close_sh = abs(_lz - _ez) if _lz < _ez else 0
+                _pct = round(min(_lz / _ez * 100, 100)) if _ez > 0 else 0
+                
+                _rows.append({" ": _active_flag,
+                              "Pair": f"{_s1.replace('.NS','')}/{_s2.replace('.NS','')}",
+                              "Z-score": f"{_lz:+.2f}",
+                              "Entry Z": float(_ez), "Exit Z": float(_xz),
+                              "Dir": _dir_icon,
+                              "Signal": "IN" if _pk in open_pos else ("READY" if _lz >= _ez else "WAIT")})
             
             if _rows:
                 _zdf = pd.DataFrame(_rows)
-                _zdf["Z-score"] = _zdf["Z-score"].apply(lambda x: f"{x:+.2f}")
-                st.dataframe(_zdf, use_container_width=True, hide_index=True)
+                
+                def _z_color(v):
+                    if isinstance(v, str):
+                        try:
+                            f = float(v)
+                            if f > 0: return "color: #ff5252; font-weight: bold"
+                            if f < 0: return "color: #00e676; font-weight: bold"
+                        except: pass
+                    return ""
+                
+                def _d_color(v):
+                    if v == "🔴": return "color: #ff5252; font-size: 1.2em"
+                    if v == "🟢": return "color: #00e676; font-size: 1.2em"
+                    return "color: #666"
+                
+                _styled = _zdf.style.map(_z_color, subset=["Z-score"]).map(_d_color, subset=["Dir"])
+                
+                st.dataframe(_styled, use_container_width=True, hide_index=True,
+                             column_config={
+                                 " ": st.column_config.TextColumn("", width="35px"),
+                                 "Pair": st.column_config.TextColumn("Pair", width="180px"),
+                                 "Z-score": st.column_config.TextColumn("Z", width="65px"),
+                                 "Entry Z": st.column_config.NumberColumn("EZ", width="55px", format="%.1f"),
+                                 "Exit Z": st.column_config.NumberColumn("XZ", width="55px", format="%.1f"),
+                                 "Dir": st.column_config.TextColumn("", width="30px"),
+                                 "Signal": st.column_config.TextColumn("Signal", width="65px"),
+                             })
         
     except Exception as _e:
         st.caption(f"Z-score table unavailable: {_e}")
