@@ -67,58 +67,72 @@ def _get_broker_api():
 def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
     """Place a pair entry order using options (PE on s1, CE on s2). Returns (order_id, option_symbol, expiry)."""
     api = _get_broker_api()
-    opt_symbol = None
-    expiry_date = None
+    if api is None or not LIVE:
+        return None, None, None
 
     try:
         cache = get_cache()
         # Buy PE on s1 (expect it to fall), Buy CE on s2 (expect it to rise)
         nfo1 = cache.resolve_option_contract(s1, None, "SHORT", strike_mode="ATM", min_dte=ENTRY_MIN_DTE)
         nfo2 = cache.resolve_option_contract(s2, None, "LONG", strike_mode="ATM", min_dte=ENTRY_MIN_DTE)
-        if nfo1 and nfo2:
-            opt_symbol = nfo1["trading_symbol"]
-            expiry_date = nfo1["expiry"]
-    except Exception:
-        pass
+        if not nfo1 or not nfo2:
+            print(f"  Cannot resolve options for {s1}/{s2} — skipping trade")
+            return None, None, None
 
-    if api is None or not LIVE:
-        return None, opt_symbol, expiry_date
-
-    try:
-        side = "LONG" if direction == "LONG" else "SHORT"
         from ganah import place_live_order
+        lot1 = _lot_size(s1)
+        lot2 = _lot_size(s2)
+        qty1 = max(1, int(round(lot1 * lot_scale)))
+        qty2 = max(1, int(round(lot2 * lot_scale)))
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
-        base_qty = _lot_size(s1)
-        qty = max(1, int(round(base_qty * lot_scale)))
+        clean_s2 = s2.replace(".NS", "").replace(".BO", "")
         remarks = f"PT_{direction[:4]}_{clean_s1}_{z_score:.2f}_L{lot_scale:.1f}"
-        trading_symbol = opt_symbol if opt_symbol else f"{clean_s1}-EQ"
-        exchange = "NFO" if opt_symbol else "NSE"
-        oid = place_live_order(
-            trading_symbol, side, qty, remarks,
-            exchange=exchange, product_type="I", price_type="MKT"
+
+        # Leg 1: BUY PUT on s1 (bearish)
+        oid1 = place_live_order(
+            nfo1["trading_symbol"], "LONG", qty1, remarks,
+            exchange="NFO", product_type="I", price_type="MKT"
         )
-        return oid, opt_symbol, expiry_date
+        # Leg 2: BUY CALL on s2 (bullish)
+        oid2 = place_live_order(
+            nfo2["trading_symbol"], "LONG", qty2, remarks,
+            exchange="NFO", product_type="I", price_type="MKT"
+        )
+        print(f"  Orders placed: {oid1}, {oid2}")
+        return oid1, nfo1["trading_symbol"], nfo1["expiry"]
     except Exception as e:
-        print(f"  Pair order failed for {s1}: {e}")
-        return None, opt_symbol, expiry_date
+        print(f"  Pair order failed: {e}")
+        return None, None, None
 
 
 def _place_pair_exit(s1, direction, reason, z_score):
-    """Close the first leg of a pair position."""
+    """Close both legs of a pair position using options."""
     api = _get_broker_api()
     if api is None:
         return
     try:
-        side = "SHORT" if direction == "LONG" else "LONG"
         from ganah import place_live_order
+        side = "SHORT" if direction == "LONG" else "LONG"
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         qty = _lot_size(s1)
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])
         remarks = f"PT_{reason_short}_{clean_s1}_{z_score:.2f}"
-        place_live_order(
-            f"{clean_s1}-EQ", side, qty, remarks,
-            exchange="NSE", product_type="I", price_type="MKT"
-        )
+
+        # Resolve option contract to find the correct trading symbol
+        try:
+            from common.market_data.cache import get_cache
+            cache = get_cache()
+            nfo = cache.resolve_option_contract(s1, None, "SHORT", strike_mode="ATM")
+            if nfo:
+                place_live_order(
+                    nfo["trading_symbol"], side, qty, remarks,
+                    exchange="NFO", product_type="I", price_type="MKT"
+                )
+                return
+        except Exception:
+            pass
+        # Fallback: if option resolution fails, skip (no equity fallback)
+        print(f"  Cannot resolve option for exit on {s1} — skipping")
     except Exception as e:
         print(f"  Pair exit failed for {s1}: {e}")
 
