@@ -206,32 +206,51 @@ class PairTradingCache:
         """Ensure all tables exist. Safe to call repeatedly - no-op after first call."""
         if PairTradingCache._initialized:
             return
-        con = None
-        try:
-            con = duckdb.connect(DB_PATH)
-            for stmt in _SCHEMA.strip().split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    con.execute(stmt)
-            PairTradingCache._initialized = True
-            # Migrate existing open positions into pair_trades
-            self._migrate_open_positions(con)
-        except Exception as e:
-            print(f"[WARN] PairTradingCache init failed: {e}")
-        finally:
-            if con:
-                con.close()
+        import time as _time
+        for _ in range(15):
+            con = None
+            try:
+                con = duckdb.connect(DB_PATH)
+                for stmt in _SCHEMA.strip().split(";"):
+                    stmt = stmt.strip()
+                    if stmt:
+                        con.execute(stmt)
+                PairTradingCache._initialized = True
+                self._migrate_open_positions(con)
+                break
+            except Exception as e:
+                if "lock" in str(e).lower():
+                    con = None
+                    _time.sleep(5)
+                else:
+                    print(f"[WARN] PairTradingCache init failed: {e}")
+                    break
+            finally:
+                if con:
+                    con.close()
+        if not PairTradingCache._initialized:
+            raise ConnectionError("Could not initialize PairTrading DB (locked)" + 
+                                   " after 15 attempts")
 
     def _db_read(self):
         self._init_db()
         if PairTradingCache._read_con is None:
-            PairTradingCache._read_con = duckdb.connect(DB_PATH, read_only=True)
+            PairTradingCache._read_con = duckdb.connect(DB_PATH)
         return PairTradingCache._read_con
 
     def _db_write(self):
         self._init_db()
         if PairTradingCache._write_con is None:
-            PairTradingCache._write_con = duckdb.connect(DB_PATH)
+            for _ in range(10):
+                try:
+                    PairTradingCache._write_con = duckdb.connect(DB_PATH)
+                    break
+                except Exception as e:
+                    if "lock" in str(e).lower():
+                        import time
+                        time.sleep(5)
+                    else:
+                        raise
         return PairTradingCache._write_con
 
     # --- pair_positions ---
