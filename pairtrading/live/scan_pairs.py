@@ -64,40 +64,113 @@ def _get_broker_api():
         return None
 
 
+def _strike_interval(price):
+    """Determine NSE option strike interval based on underlying price."""
+    if price <= 50: return 2.5
+    if price <= 100: return 5
+    if price <= 250: return 10
+    if price <= 500: return 25
+    if price <= 1000: return 50
+    if price <= 5000: return 100
+    if price <= 10000: return 200
+    return 500
+
+
+def get_live_option(symbol, option_type, api):
+    """Resolve an ATM option contract via Shoonya live API.
+    
+    Args:
+        symbol: 'TCS.NS' or 'WIPRO.NS' etc.
+        option_type: 'PE' or 'CE'
+        api: Authenticated Shoonya NorenApi instance
+    
+    Returns:
+        dict with trading_symbol, lot_size, strike, expiry, bid, ask, ltp
+        or None on failure.
+    """
+    try:
+        clean = symbol.replace(".NS", "").replace(".BO", "")
+        # Get current underlying price via searchscrip
+        scrip = api.searchscrip(exchange="NSE", searchtext=clean + "-EQ")
+        if not scrip or scrip.get("stat") != "Ok":
+            print(f"  [LIVE] searchscrip failed for {symbol}")
+            return None
+        underlying = float(scrip["values"][0]["lp"])
+        token = scrip["values"][0]["token"]
+        
+        # Round to ATM strike
+        interval = _strike_interval(underlying)
+        atm_strike = round(underlying / interval) * interval
+        
+        # Get option chain from Shoonya
+        chain = api.get_option_chain("NFO", clean + "-EQ", str(atm_strike), count=3)
+        if not chain or chain.get("stat") != "Ok":
+            print(f"  [LIVE] get_option_chain failed for {symbol}")
+            return None
+        
+        values = chain.get("values", [])
+        for opt in values:
+            if opt.get("optt") == option_type:
+                # Get live quote for bid/ask
+                opt_quote = api.get_quotes("NFO", opt["token"])
+                if opt_quote and opt_quote.get("stat") == "Ok":
+                    return {
+                        "trading_symbol": opt["tsym"],
+                        "token": opt["token"],
+                        "strike": float(opt["strprc"]),
+                        "expiry": opt["exd"],
+                        "lot_size": int(float(opt.get("lsz", 1))),
+                        "bid": float(opt_quote.get("bp", 0)),
+                        "ask": float(opt_quote.get("sp", 0)),
+                        "ltp": float(opt_quote.get("lp", 0)),
+                    }
+        print(f"  [LIVE] No {option_type} found in option chain for {symbol}")
+        return None
+    except Exception as e:
+        print(f"  [LIVE] Error resolving {symbol} {option_type}: {e}")
+        return None
+
+
 def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
-    """Place a pair entry order using options (PE on s1, CE on s2). Returns (order_id, option_symbol, expiry)."""
+    """Place a pair entry order using options (PE on s1, CE on s2).
+    Uses Shoonya live API for option chain + pricing.
+    LIMIT orders at ask price. NO equity fallback."""
     api = _get_broker_api()
     if api is None or not LIVE:
         return None, None, None
-
+    
     try:
-        cache = get_cache()
-        # Buy PE on s1 (expect it to fall), Buy CE on s2 (expect it to rise)
-        nfo1 = cache.resolve_option_contract(s1, None, "SHORT", strike_mode="ATM", min_dte=ENTRY_MIN_DTE)
-        nfo2 = cache.resolve_option_contract(s2, None, "LONG", strike_mode="ATM", min_dte=ENTRY_MIN_DTE)
+        nfo1 = get_live_option(s1, "PE", api)
+        nfo2 = get_live_option(s2, "CE", api)
         if not nfo1 or not nfo2:
             print(f"  Cannot resolve options for {s1}/{s2} — skipping trade")
             return None, None, None
-
+        
+        # Check bid-ask spread — skip if too wide (>50% of premium)
+        for name, nfo in [("PE on " + s1, nfo1), ("CE on " + s2, nfo2)]:
+            if nfo["ask"] > 0 and nfo["bid"] > 0:
+                spread_pct = (nfo["ask"] - nfo["bid"]) / nfo["ask"] * 100
+                if spread_pct > 50:
+                    print(f"  Skip {name}: bid-ask spread {spread_pct:.0f}% too wide")
+                    return None, None, None
+                if spread_pct > 20:
+                    print(f"  Wide spread for {name}: {spread_pct:.0f}% — placing anyway")
+        
         from ganah import place_live_order
-        lot1 = int(nfo1.get("lot_size", _lot_size(s1)))
-        lot2 = int(nfo2.get("lot_size", _lot_size(s2)))
-        qty1 = max(1, int(round(lot1 * lot_scale)))
-        qty2 = max(1, int(round(lot2 * lot_scale)))
+        qty1 = max(1, int(round(nfo1["lot_size"] * lot_scale)))
+        qty2 = max(1, int(round(nfo2["lot_size"] * lot_scale)))
+        price1 = nfo1["ask"] if nfo1["ask"] > 0 else nfo1["ltp"] * 1.05
+        price2 = nfo2["ask"] if nfo2["ask"] > 0 else nfo2["ltp"] * 1.05
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
-        clean_s2 = s2.replace(".NS", "").replace(".BO", "")
         remarks = f"PT_{direction[:4]}_{clean_s1}_{z_score:.2f}_L{lot_scale:.1f}"
-
-        # Leg 1: BUY PUT on s1 (bearish)
-        oid1 = place_live_order(
-            nfo1["trading_symbol"], "LONG", qty1, remarks,
-            exchange="NFO", product_type="I", price_type="MKT"
-        )
-        # Leg 2: BUY CALL on s2 (bullish)
-        oid2 = place_live_order(
-            nfo2["trading_symbol"], "LONG", qty2, remarks,
-            exchange="NFO", product_type="I", price_type="MKT"
-        )
+        
+        print(f"  {s1}: {nfo1['trading_symbol']} lot={nfo1['lot_size']} bid={nfo1['bid']} ask={nfo1['ask']}")
+        print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} bid={nfo2['bid']} ask={nfo2['ask']}")
+        
+        oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
+                                exchange="NFO", product_type="I", price_type="LMT", price=price1)
+        oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
+                                exchange="NFO", product_type="I", price_type="LMT", price=price2)
         print(f"  Orders placed: {oid1}, {oid2}")
         return oid1, nfo1["trading_symbol"], nfo1["expiry"]
     except Exception as e:
@@ -106,33 +179,27 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
 
 
 def _place_pair_exit(s1, direction, reason, z_score):
-    """Close both legs of a pair position using options."""
+    """Close a pair position leg using options (reverse of entry order)."""
     api = _get_broker_api()
     if api is None:
         return
     try:
         from ganah import place_live_order
-        side = "SHORT" if direction == "LONG" else "LONG"
+        # For exit, we sell the options we bought (reverse side)
+        exit_side = "SHORT"
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
-        qty = _lot_size(s1)
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])
         remarks = f"PT_{reason_short}_{clean_s1}_{z_score:.2f}"
-
-        # Resolve option contract to find the correct trading symbol
-        try:
-            from common.market_data.cache import get_cache
-            cache = get_cache()
-            nfo = cache.resolve_option_contract(s1, None, "SHORT", strike_mode="ATM")
-            if nfo:
-                place_live_order(
-                    nfo["trading_symbol"], side, qty, remarks,
-                    exchange="NFO", product_type="I", price_type="MKT"
-                )
-                return
-        except Exception:
-            pass
-        # Fallback: if option resolution fails, skip (no equity fallback)
-        print(f"  Cannot resolve option for exit on {s1} — skipping")
+        
+        # Resolve via live API to get current option symbol and bid price
+        nfo = get_live_option(s1, "PE", api)
+        if nfo:
+            price = nfo["bid"] if nfo["bid"] > 0 else nfo["ltp"] * 0.95
+            place_live_order(nfo["trading_symbol"], exit_side, nfo["lot_size"], remarks,
+                            exchange="NFO", product_type="I", price_type="LMT", price=price)
+            print(f"  Exit order placed: {s1} {nfo['trading_symbol']} bid={nfo['bid']}")
+        else:
+            print(f"  Cannot resolve option for exit on {s1} — skipping")
     except Exception as e:
         print(f"  Pair exit failed for {s1}: {e}")
 
