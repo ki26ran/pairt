@@ -183,7 +183,8 @@ def show():
     st.divider()
     st.subheader("📊 Broker Option Positions")
     try:
-        from ganah import setup_api as _sapi, get_pair_cache as _gpc
+        from ganah import setup_api as _sapi
+        from pairtrading.live.cache import get_pair_cache as _gpc
         from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
         _ba = _sapi(BROKER_NAME, BROKER_USERNAME)
         _broker_pos = _ba.get_positions()
