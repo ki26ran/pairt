@@ -80,8 +80,8 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
             return None, None, None
 
         from ganah import place_live_order
-        lot1 = _lot_size(s1)
-        lot2 = _lot_size(s2)
+        lot1 = int(nfo1.get("lot_size", _lot_size(s1)))
+        lot2 = int(nfo2.get("lot_size", _lot_size(s2)))
         qty1 = max(1, int(round(lot1 * lot_scale)))
         qty2 = max(1, int(round(lot2 * lot_scale)))
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
