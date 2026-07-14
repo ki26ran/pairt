@@ -241,13 +241,16 @@ def show():
                     _leg_df = pd.DataFrame(_pg["legs"])
                     if "Pair" in _leg_df.columns:
                         _leg_df = _leg_df.drop(columns=["Pair"])
-                    st.dataframe(_leg_df, use_container_width=True, hide_index=True)
+                    _styled = _leg_df.style.map(_color_pnl, subset=["MTM", "P&L"])
+                    st.dataframe(_styled, use_container_width=True, hide_index=True)
                 
                 # Also show options not matched to any pair
                 _unmatched = [r for r in _all_rows if not r["Pair"]]
                 if _unmatched:
                     with st.expander(f"Other NFO Options ({len(_unmatched)})"):
-                        st.dataframe(pd.DataFrame(_unmatched), use_container_width=True)
+                        _udf = pd.DataFrame(_unmatched)
+                        _ustyled = _udf.style.map(_color_pnl, subset=["MTM", "P&L"])
+                        st.dataframe(_ustyled, use_container_width=True)
                 
                 _bp_total = sum(r["P&L"] for r in _all_rows)
                 st.caption(f"**Net broker option P&L: ₹{_bp_total:+,.0f}**")
