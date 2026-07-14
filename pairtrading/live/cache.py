@@ -136,8 +136,6 @@ CREATE TABLE IF NOT EXISTS pair_trades (
 class PairTradingCache:
     _instance = None
     _initialized = False
-    _read_con = None
-    _write_con = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -234,24 +232,20 @@ class PairTradingCache:
 
     def _db_read(self):
         self._init_db()
-        if PairTradingCache._read_con is None:
-            PairTradingCache._read_con = duckdb.connect(DB_PATH)
-        return PairTradingCache._read_con
+        return duckdb.connect(DB_PATH)
 
     def _db_write(self):
         self._init_db()
-        if PairTradingCache._write_con is None:
-            for _ in range(10):
-                try:
-                    PairTradingCache._write_con = duckdb.connect(DB_PATH)
-                    break
-                except Exception as e:
-                    if "lock" in str(e).lower():
-                        import time
-                        time.sleep(5)
-                    else:
-                        raise
-        return PairTradingCache._write_con
+        for _ in range(15):
+            try:
+                return duckdb.connect(DB_PATH)
+            except Exception as e:
+                if "lock" in str(e).lower():
+                    import time as _t
+                    _t.sleep(5)
+                else:
+                    raise
+        raise ConnectionError("Could not acquire write lock on pairtrading DB")
 
     # --- pair_positions ---
     def load_positions(self) -> Dict[str, dict]:
