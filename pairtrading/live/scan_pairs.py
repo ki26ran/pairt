@@ -201,9 +201,9 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
         print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} strike={nfo2['strike']} limit=₹{nfo2['limit_price']}")
         
         oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
-                                exchange="NFO", product_type="I", price_type="LMT", price=nfo1["limit_price"])
+                                exchange="NFO", product_type="M", price_type="LMT", price=nfo1["limit_price"])
         oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
-                                exchange="NFO", product_type="I", price_type="LMT", price=nfo2["limit_price"])
+                                exchange="NFO", product_type="M", price_type="LMT", price=nfo2["limit_price"])
         print(f"  Orders placed: {oid1}, {oid2}")
         
         # Post-check: verify both orders filled before recording position
@@ -242,7 +242,7 @@ def _place_pair_exit(s1, direction, reason, z_score):
         if nfo:
             price = round(nfo["estimated_premium"] * 0.5, 2)  # exit at half premium (conservative)
             place_live_order(nfo["trading_symbol"], "SHORT", nfo["lot_size"], remarks,
-                            exchange="NFO", product_type="I", price_type="LMT", price=price)
+                            exchange="NFO", product_type="M", price_type="LMT", price=price)
             print(f"  Exit order placed: {s1} {nfo['trading_symbol']}")
         else:
             print(f"  Cannot resolve option for exit on {s1} — skipping")
