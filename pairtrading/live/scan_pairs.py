@@ -160,12 +160,31 @@ def resolve_option_contract(symbol, option_type, min_dte=ENTRY_MIN_DTE):
 
 def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
     """Place a pair entry order using options (PE on s1, CE on s2).
-    Resolves contracts from cached NFO table + LIMIT orders."""
+    Verifies orders filled before recording position.
+    Checks broker for existing positions first to avoid doubling."""
     api = _get_broker_api()
     if api is None or not LIVE:
         return None, None, None
     
     try:
+        # Pre-check: verify broker doesn't already have positions for these legs
+        _broker_pos = api.get_positions()
+        if isinstance(_broker_pos, list):
+            for _p in _broker_pos:
+                _tsym = _p.get("tsym", "")
+                _net = int(_p.get("netqty", 0))
+                _inst = _p.get("instname", "")
+                if _inst == "OPTSTK" and _net != 0:
+                    # Check if this option belongs to either leg
+                    n1 = resolve_option_contract(s1, "PE", 0)
+                    n2 = resolve_option_contract(s2, "CE", 0)
+                    if n1 and _tsym == n1["trading_symbol"]:
+                        print(f"  SKIP: {s1} PE already held at broker ({_net} qty)")
+                        return None, None, None
+                    if n2 and _tsym == n2["trading_symbol"]:
+                        print(f"  SKIP: {s2} CE already held at broker ({_net} qty)")
+                        return None, None, None
+        
         nfo1 = resolve_option_contract(s1, "PE", ENTRY_MIN_DTE)
         nfo2 = resolve_option_contract(s2, "CE", ENTRY_MIN_DTE)
         if not nfo1 or not nfo2:
@@ -186,7 +205,23 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
         oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
                                 exchange="NFO", product_type="I", price_type="LMT", price=nfo2["limit_price"])
         print(f"  Orders placed: {oid1}, {oid2}")
-        return oid1, nfo1["trading_symbol"], nfo1["expiry"]
+        
+        # Post-check: verify both orders filled before recording position
+        from ganah import order_status
+        f1, _, _, r1 = order_status(oid1)
+        f2, _, _, r2 = order_status(oid2)
+        if f1 == 1 and f2 == 1:
+            print(f"  Both orders filled ✅")
+            return oid1, nfo1["trading_symbol"], nfo1["expiry"]
+        elif f1 == 1:
+            print(f"  ⚠️ Only {s1} filled ({oid1}). {s2} rejected: {r2}. Cancelling...")
+            return None, None, None
+        elif f2 == 1:
+            print(f"  ⚠️ Only {s2} filled ({oid2}). {s1} rejected: {r1}. Cancelling...")
+            return None, None, None
+        else:
+            print(f"  Both orders rejected: {r1} | {r2}")
+            return None, None, None
     except Exception as e:
         print(f"  Pair order failed: {e}")
         return None, None, None
