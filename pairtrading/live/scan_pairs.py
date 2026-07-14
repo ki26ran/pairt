@@ -149,8 +149,9 @@ def resolve_option_contract(symbol, option_type, min_dte=ENTRY_MIN_DTE):
             }
         
         # Estimate ATM premium (~2% of underlying for ATM option)
-        best["estimated_premium"] = round(underlying * 0.02, 2)
-        best["limit_price"] = round(underlying * 0.03, 2)  # generous limit (3%)
+        tick = _strike_interval(underlying * 0.02)
+        best["estimated_premium"] = round(underlying * 0.02 / tick) * tick
+        best["limit_price"] = round(underlying * 0.03 / tick) * tick  # generous limit (3%), rounded to tick
         return best
     except Exception as e:
         print(f"  [NFO] Error resolving {symbol} {option_type}: {e}")
