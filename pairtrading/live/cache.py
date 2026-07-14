@@ -225,7 +225,7 @@ class PairTradingCache:
     def _db_read(self):
         self._init_db()
         if PairTradingCache._read_con is None:
-            PairTradingCache._read_con = duckdb.connect(DB_PATH)
+            PairTradingCache._read_con = duckdb.connect(DB_PATH, read_only=True)
         return PairTradingCache._read_con
 
     def _db_write(self):
@@ -239,7 +239,7 @@ class PairTradingCache:
         """Load all open positions from DuckDB."""
         con = None
         try:
-            con = self._db_write()  # use write connection to avoid stale snapshots
+            con = self._db_read()
             rows = con.execute("SELECT * FROM pair_positions ORDER BY pair_key").fetchall()
             cols = ["pair_key", "s1", "s2", "direction", "entry_date", "entry_z",
                     "entry_p1", "entry_p2", "entry_z_threshold", "exit_z_threshold",

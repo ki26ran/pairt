@@ -7,7 +7,7 @@ Modes:
   --mode scan     (default) Full run: data download + entry scan + exit check. Run hourly.
   --mode monitor  Light run: cached data, exit check + P&L update only. Run every 5 min.
 """
-import os, sys, json, argparse, math
+import os, sys, json, argparse, math, time
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -512,7 +512,23 @@ def main():
     except Exception:
         pass
 
-    pair_cache = get_pair_cache()
+    pair_cache = None
+    for attempt in range(10):
+        try:
+            pair_cache = get_pair_cache()
+            # Verify connection by loading thresholds
+            if pair_cache.load_thresholds() is not None:
+                break
+        except Exception as e:
+            if "lock" in str(e).lower():
+                print(f"  DB locked (attempt {attempt+1}/10), waiting 15s...")
+                time.sleep(15)
+            else:
+                print(f"  DB error (attempt {attempt+1}): {e}")
+                time.sleep(5)
+    if pair_cache is None:
+        print("  Could not access pairtrading DB after 10 attempts. Skipping.")
+        return
 
     if args.mode == "scan":
         run_scan(pair_cache)
