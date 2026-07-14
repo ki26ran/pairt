@@ -309,15 +309,14 @@ def show():
                 _lz = float(_z.iloc[-1])
                 
                 if _lz >= _ez:
-                    _dir = "🔴 SHORT"
-                    _dir_icon = "🔴"
+                    _dir = "S"
+                    _dir_icon = "S"
                 elif _lz <= -_ez:
-                    _dir = "🟢 LONG"
-                    _dir_icon = "🟢"
+                    _dir = "L"
+                    _dir_icon = "L"
                 else:
-                    _icon_z = "🔴" if _lz > 0 else "🟢" if _lz < 0 else "⚪"
-                    _dir = f"{_icon_z} {_lz:+.2f}"
-                    _dir_icon = _icon_z
+                    _dir = "—"
+                    _dir_icon = "—"
                 
                 _active_flag = "✅" if _pk in open_pos else ""
                 _close_sh = abs(_lz - _ez) if _lz < _ez else 0
@@ -343,8 +342,8 @@ def show():
                     return ""
                 
                 def _d_color(v):
-                    if v == "🔴": return "color: #ff5252; font-size: 1.2em"
-                    if v == "🟢": return "color: #00e676; font-size: 1.2em"
+                    if v == "S": return "color: #ff5252; font-weight: bold; font-size: 1.1em"
+                    if v == "L": return "color: #00e676; font-weight: bold; font-size: 1.1em"
                     return "color: #666"
                 
                 _styled = _zdf.style.map(_z_color, subset=["Z-score"]).map(_d_color, subset=["Dir"])
@@ -356,7 +355,7 @@ def show():
                                  "Z-score": st.column_config.TextColumn("Z", width="65px"),
                                  "Entry Z": st.column_config.NumberColumn("EZ", width="55px", format="%.1f"),
                                  "Exit Z": st.column_config.NumberColumn("XZ", width="55px", format="%.1f"),
-                                 "Dir": st.column_config.TextColumn("", width="30px"),
+                                 "Dir": st.column_config.TextColumn("", width="25px"),
                                  "Signal": st.column_config.TextColumn("Signal", width="65px"),
                              })
         
