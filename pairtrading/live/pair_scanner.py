@@ -261,6 +261,73 @@ def show():
     except Exception as _e:
         st.caption(f"Broker positions unavailable: {_e}")
 
+    # -- All Pairs Z-Score Table --
+    st.divider()
+    st.subheader(f"📋 All Pairs ({len(pairs)})")
+    try:
+        import duckdb as _duck
+        _cache = get_cache()
+        _con = _duck.connect(_cache.db_path, read_only=True)
+        _th_data = {}
+        _db_th = get_pair_cache().load_thresholds()
+        _th_data.update(_db_th)
+        if os.path.exists(THRESHOLDS_FILE):
+            with open(THRESHOLDS_FILE) as f:
+                _file_th = json.load(f)
+                _th_data.update({k: v for k, v in _file_th.items() if k not in _th_data})
+        
+        _all_stocks = list(set([s for pk in _th_data for s in pk.split("|")]))
+        _clean = [s.replace(".NS", "") for s in _all_stocks]
+        _ph = ", ".join(["?" for _ in _clean])
+        _df = _con.execute(f"""SELECT ticker, datetime_ist, close FROM hourly_bars
+            WHERE ticker IN ({_ph}) AND datetime_ist >= '2026-07-01' AND datetime_ist < '2026-07-15'
+            ORDER BY datetime_ist""", _clean).df()
+        _con.close()
+        
+        if not _df.empty:
+            _df["datetime_ist"] = pd.to_datetime(_df["datetime_ist"])
+            _closes = _df.pivot_table(index="datetime_ist", columns="ticker", values="close", aggfunc="first").ffill()
+            _closes.index = pd.to_datetime(_closes.index)
+            _mkt = (_closes.index.hour*60+_closes.index.minute>=555) & (_closes.index.hour*60+_closes.index.minute<=930)
+            _closes = _closes[_mkt]
+            
+            _rows = []
+            for _pk in sorted(_th_data.keys()):
+                _s1, _s2 = _pk.split("|")
+                _c1, _c2 = _s1.replace(".NS", ""), _s2.replace(".NS", "")
+                if _c1 not in _closes.columns or _c2 not in _closes.columns:
+                    continue
+                _hr = _th_data[_pk].get("hr", 1.0)
+                _ez = _th_data[_pk].get("entry_z", 2.0)
+                _xz = _th_data[_pk].get("exit_z", 0.5)
+                _p1, _p2 = _closes[_c1], _closes[_c2]
+                _combined = pd.concat([_p1, _p2], axis=1).dropna()
+                if len(_combined) < 64:
+                    continue
+                _spread = _combined.iloc[:, 0] - _hr * _combined.iloc[:, 1]
+                _z = ((_spread - _spread.rolling(63).mean()) / _spread.rolling(63).std()).dropna()
+                _lz = float(_z.iloc[-1])
+                
+                if _lz >= _ez:
+                    _dir = "SHORT"
+                elif _lz <= -_ez:
+                    _dir = "LONG"
+                else:
+                    _dir = "—"
+                
+                _active = "✅" if _pk in open_pos else ""
+                _rows.append({"Pair": f"{_s1.replace('.NS','')}/{_s2.replace('.NS','')}",
+                              "Z-score": round(_lz, 2), "Entry Z": _ez, "Exit Z": _xz,
+                              "Dir": _dir, "": _active})
+            
+            if _rows:
+                _zdf = pd.DataFrame(_rows)
+                _zdf["Z-score"] = _zdf["Z-score"].apply(lambda x: f"{x:+.2f}")
+                st.dataframe(_zdf, use_container_width=True, hide_index=True)
+        
+    except Exception as _e:
+        st.caption(f"Z-score table unavailable: {_e}")
+
     # -- Charts for open positions --
     if open_pos:
         st.divider()
