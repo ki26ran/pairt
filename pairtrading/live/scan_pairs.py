@@ -32,6 +32,7 @@ _broker_api = None
 _SECTOR_CACHE = None  # {symbol_with_NS: sector}
 _cooldowns = {}       # {pair_key: datetime} — stop-loss cooldown (24h)
 _lot_scales = {}      # {pair_key: float} — position size multiplier
+_retry_legs = {}      # {pair_key: dict} — partially filled pairs needing leg retry
 
 THRESHOLDS_FILE = os.path.join(BASE_DIR, "configs", "pair_thresholds.json")
 
@@ -158,40 +159,23 @@ def resolve_option_contract(symbol, option_type, min_dte=ENTRY_MIN_DTE):
         return None
 
 
-def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
-    """Place a pair entry order using options (PE on s1, CE on s2).
-    Verifies orders filled before recording position.
-    Checks broker for existing positions first to avoid doubling."""
+def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None):
+    """Place a pair entry order using options.
+    Returns (order_id, opt_symbol, expiry, fill_status) where fill_status bitmask:
+      0 = none filled, 1 = s1 filled, 2 = s2 filled, 3 = both filled.
+    If retry_leg is specified, only place the missing leg."""
     api = _get_broker_api()
     if api is None or not LIVE:
-        return None, None, None
+        return None, None, None, 0
     
     try:
-        # Pre-check: verify broker doesn't already have positions for these legs
-        _broker_pos = api.get_positions()
-        if isinstance(_broker_pos, list):
-            for _p in _broker_pos:
-                _tsym = _p.get("tsym", "")
-                _net = int(_p.get("netqty", 0))
-                _inst = _p.get("instname", "")
-                if _inst == "OPTSTK" and _net != 0:
-                    # Check if this option belongs to either leg
-                    opt1 = "PE" if direction == "SHORT" else "CE"
-                    opt2 = "CE" if direction == "SHORT" else "PE"
-                    n1 = resolve_option_contract(s1, opt1, 0)
-                    n2 = resolve_option_contract(s2, opt2, 0)
-                    if n1 and _tsym == n1["trading_symbol"]:
-                        print(f"  SKIP: {s1} {opt1} already held at broker ({_net} qty)")
-                        return None, None, None
-                    if n2 and _tsym == n2["trading_symbol"]:
-                        print(f"  SKIP: {s2} {opt2} already held at broker ({_net} qty)")
-                        return None, None, None
-        
-        nfo1 = resolve_option_contract(s1, "CE" if direction == "LONG" else "PE", ENTRY_MIN_DTE)
-        nfo2 = resolve_option_contract(s2, "PE" if direction == "LONG" else "CE", ENTRY_MIN_DTE)
+        opt1 = "PE" if direction == "SHORT" else "CE"
+        opt2 = "CE" if direction == "SHORT" else "PE"
+        nfo1 = resolve_option_contract(s1, opt1, ENTRY_MIN_DTE)
+        nfo2 = resolve_option_contract(s2, opt2, ENTRY_MIN_DTE)
         if not nfo1 or not nfo2:
             print(f"  Cannot resolve options for {s1}/{s2} — skipping trade")
-            return None, None, None
+            return None, None, None, 0
         
         from ganah import place_live_order
         qty1 = max(1, int(round(nfo1["lot_size"] * lot_scale)))
@@ -199,34 +183,39 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         remarks = f"PT_{direction[:4]}_{clean_s1}_{z_score:.2f}_L{lot_scale:.1f}"
         
-        print(f"  {s1}: {nfo1['trading_symbol']} lot={nfo1['lot_size']} strike={nfo1['strike']} limit=₹{nfo1['limit_price']}")
-        print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} strike={nfo2['strike']} limit=₹{nfo2['limit_price']}")
+        fill_status = 0
+        oid1, oid2 = None, None
         
-        oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
-                                exchange="NFO", product_type="M", price_type="LMT", price=nfo1["limit_price"])
-        oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
-                                exchange="NFO", product_type="M", price_type="LMT", price=nfo2["limit_price"])
-        print(f"  Orders placed: {oid1}, {oid2}")
+        if retry_leg != 2:
+            print(f"  {s1}: {nfo1['trading_symbol']} lot={nfo1['lot_size']} strike={nfo1['strike']} limit=₹{nfo1['limit_price']}")
+            oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
+                                    exchange="NFO", product_type="M", price_type="LMT", price=nfo1["limit_price"])
+        if retry_leg != 1:
+            print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} strike={nfo2['strike']} limit=₹{nfo2['limit_price']}")
+            oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
+                                    exchange="NFO", product_type="M", price_type="LMT", price=nfo2["limit_price"])
+        print(f"  Orders placed: oid1={oid1}, oid2={oid2}")
         
-        # Post-check: verify both orders filled before recording position
         from ganah import order_status
-        f1, _, _, r1 = order_status(oid1)
-        f2, _, _, r2 = order_status(oid2)
-        if f1 == 1 and f2 == 1:
-            print(f"  Both orders filled ✅")
-            return oid1, nfo1["trading_symbol"], nfo1["expiry"]
-        elif f1 == 1:
-            print(f"  ⚠️ Only {s1} filled ({oid1}). {s2} rejected: {r2}. Cancelling...")
-            return None, None, None
-        elif f2 == 1:
-            print(f"  ⚠️ Only {s2} filled ({oid2}). {s1} rejected: {r1}. Cancelling...")
-            return None, None, None
-        else:
-            print(f"  Both orders rejected: {r1} | {r2}")
-            return None, None, None
+        if oid1:
+            f1, _, _, r1 = order_status(oid1)
+            if f1 == 1:
+                fill_status |= 1
+                print(f"  {s1} filled ✅")
+            else:
+                print(f"  {s1} rejected: {r1}")
+        if oid2:
+            f2, _, _, r2 = order_status(oid2)
+            if f2 == 1:
+                fill_status |= 2
+                print(f"  {s2} filled ✅")
+            else:
+                print(f"  {s2} rejected: {r2}")
+        
+        return (oid1 or oid2, nfo1["trading_symbol"], nfo1["expiry"], fill_status)
     except Exception as e:
         print(f"  Pair order failed: {e}")
-        return None, None, None
+        return None, None, None, 0
 
 
 def _place_pair_exit(s1, s2, direction, reason, z_score):
@@ -426,6 +415,42 @@ def process_signals(thresholds, raw, pair_cache, mode):
                     pass
 
             if not exit_reason:
+                # Retry missing leg for partially filled positions
+                retry_info = _retry_legs.get(pair_key)
+                if retry_info:
+                    missing_leg = 1 if not (retry_info["filled"] & 1) else 2
+                    print(f"  ⚠️ Retrying missing leg ({'s1' if missing_leg == 1 else 's2'}) for {pair_key}")
+                    _, _, _, new_fill = _place_pair_order(s1, s2, direction, latest_z, retry_info.get("lot_scale", 1.0), retry_leg=missing_leg)
+                    if new_fill & missing_leg:
+                        retry_info["filled"] |= missing_leg
+                        print(f"  ✅ Missing leg filled for {pair_key}")
+                    if retry_info["filled"] == 3:
+                        del _retry_legs[pair_key]
+                else:
+                    # Broker-based detection: check if both legs exist at broker
+                    api = _get_broker_api()
+                    if api:
+                        _broker_pos = api.get_positions()
+                        if isinstance(_broker_pos, list):
+                            opt1 = "PE" if direction == "SHORT" else "CE"
+                            opt2 = "CE" if direction == "SHORT" else "PE"
+                            n1 = resolve_option_contract(s1, opt1, 0)
+                            n2 = resolve_option_contract(s2, opt2, 0)
+                            has1 = any(p.get("instname") == "OPTSTK" and int(p.get("netqty", 0)) != 0
+                                       and n1 and p.get("tsym") == n1["trading_symbol"] for p in _broker_pos)
+                            has2 = any(p.get("instname") == "OPTSTK" and int(p.get("netqty", 0)) != 0
+                                       and n2 and p.get("tsym") == n2["trading_symbol"] for p in _broker_pos)
+                            if has1 and not has2:
+                                print(f"  ⚠️ {s2} {opt2} missing at broker — placing...")
+                                _, _, _, new_fill = _place_pair_order(s1, s2, direction, latest_z, 1.0, retry_leg=2)
+                                if new_fill & 2:
+                                    print(f"  ✅ {s2} leg filled")
+                            elif has2 and not has1:
+                                print(f"  ⚠️ {s1} {opt1} missing at broker — placing...")
+                                _, _, _, new_fill = _place_pair_order(s1, s2, direction, latest_z, 1.0, retry_leg=1)
+                                if new_fill & 1:
+                                    print(f"  ✅ {s1} leg filled")
+                
                 if direction == "LONG":
                     if latest_z >= exit_z:
                         exit_reason = "mean-reversion"
@@ -498,24 +523,30 @@ def process_signals(thresholds, raw, pair_cache, mode):
 
                 lot_scale = 1.0  # fixed 1 lot
                 _lot_scales[pair_key] = lot_scale
-                broker_order_id, opt_symbol, expiry_date = _place_pair_order(s1, s2, direction, latest_z, lot_scale)
-                pair_cache.open_position(
-                    pair_key, s1, s2, direction,
-                    latest_z, latest_p1, latest_p2,
-                    entry_z, exit_z, hr,
-                    broker_order_id=broker_order_id,
-                    expiry_date=str(expiry_date) if expiry_date else None
-                )
-                signals.append({
-                    "Time": latest_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "s1": s1, "s2": s2,
-                    "s1_price": round(latest_p1, 2), "s2_price": round(latest_p2, 2),
-                    "Z-score": round(latest_z, 4),
-                    "Entry Z": entry_z, "Exit Z": exit_z,
-                    "Signal": signal, "hr": hr
-                })
-                _log_signal(pair_cache, s1, s2, latest_p1, latest_p2, latest_z, entry_z, exit_z, signal, hr)
-                open_positions[pair_key] = {"direction": direction}
+                oid, opt_symbol, expiry_date, fill_status = _place_pair_order(s1, s2, direction, latest_z, lot_scale)
+                if fill_status > 0:
+                    pair_cache.open_position(
+                        pair_key, s1, s2, direction,
+                        latest_z, latest_p1, latest_p2,
+                        entry_z, exit_z, hr,
+                        broker_order_id=oid,
+                        expiry_date=str(expiry_date) if expiry_date else None
+                    )
+                    # If partial fill, mark position for leg retry
+                    if fill_status < 3:
+                        _retry_legs[pair_key] = {"filled": fill_status, "s1": s1, "s2": s2,
+                                                  "direction": direction, "z_score": latest_z,
+                                                  "lot_scale": lot_scale}
+                    signals.append({
+                        "Time": latest_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "s1": s1, "s2": s2,
+                        "s1_price": round(latest_p1, 2), "s2_price": round(latest_p2, 2),
+                        "Z-score": round(latest_z, 4),
+                        "Entry Z": entry_z, "Exit Z": exit_z,
+                        "Signal": signal, "hr": hr
+                    })
+                    _log_signal(pair_cache, s1, s2, latest_p1, latest_p2, latest_z, entry_z, exit_z, signal, hr)
+                    open_positions[pair_key] = {"direction": direction}
 
         pairs_data.append(pair_data)
 
