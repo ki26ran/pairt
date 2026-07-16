@@ -151,8 +151,10 @@ def resolve_option_contract(symbol, option_type, min_dte=ENTRY_MIN_DTE):
         
         # Estimate ATM premium (~2% of underlying for ATM option)
         tick = _strike_interval(underlying * 0.02)
+        tick_size = max(0.05, _strike_interval(underlying) / 10)  # price tick from underlying
         best["estimated_premium"] = round(underlying * 0.02 / tick) * tick
         best["limit_price"] = round(underlying * 0.03 / tick) * tick  # generous limit (3%), rounded to tick
+        best["tick_size"] = tick_size
         return best
     except Exception as e:
         print(f"  [NFO] Error resolving {symbol} {option_type}: {e}")
@@ -182,18 +184,22 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
         qty2 = max(1, int(round(nfo2["lot_size"] * lot_scale)))
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         remarks = f"PT_{direction[:4]}_{clean_s1}_{z_score:.2f}_L{lot_scale:.1f}"
+        # Use higher limit price on retries to improve fill chances
+        limit_mult = 1.0 if retry_leg is None else 2.0
         
         fill_status = 0
         oid1, oid2 = None, None
         
         if retry_leg != 2:
             print(f"  {s1}: {nfo1['trading_symbol']} lot={nfo1['lot_size']} strike={nfo1['strike']} limit=₹{nfo1['limit_price']}")
+            p1 = round(nfo1["limit_price"] * limit_mult / nfo1.get("tick_size", 0.05)) * nfo1.get("tick_size", 0.05) or nfo1["limit_price"]
             oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
-                                    exchange="NFO", product_type="M", price_type="LMT", price=nfo1["limit_price"])
+                                    exchange="NFO", product_type="M", price_type="LMT", price=p1)
         if retry_leg != 1:
             print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} strike={nfo2['strike']} limit=₹{nfo2['limit_price']}")
+            p2 = round(nfo2["limit_price"] * limit_mult / nfo2.get("tick_size", 0.05)) * nfo2.get("tick_size", 0.05) or nfo2["limit_price"]
             oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
-                                    exchange="NFO", product_type="M", price_type="LMT", price=nfo2["limit_price"])
+                                    exchange="NFO", product_type="M", price_type="LMT", price=p2)
         print(f"  Orders placed: oid1={oid1}, oid2={oid2}")
         
         from ganah import order_status
@@ -424,6 +430,11 @@ def process_signals(thresholds, raw, pair_cache, mode):
                     if new_fill & missing_leg:
                         retry_info["filled"] |= missing_leg
                         print(f"  ✅ Missing leg filled for {pair_key}")
+                    elif retry_info.get("retries", 0) < 3:
+                        retry_info["retries"] = retry_info.get("retries", 0) + 1
+                        print(f"  ⏳ Will retry (attempt {retry_info['retries']+1}/3)")
+                    else:
+                        print(f"  ❌ Max retries reached for {pair_key} missing leg")
                     if retry_info["filled"] == 3:
                         del _retry_legs[pair_key]
                 else:
