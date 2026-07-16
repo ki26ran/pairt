@@ -162,7 +162,7 @@ def resolve_option_contract(symbol, option_type, min_dte=ENTRY_MIN_DTE):
 
 
 def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None):
-    """Place a pair entry order using options.
+    """Place a pair entry order using options with live bid/ask quotes.
     Returns (order_id, opt_symbol, expiry, fill_status) where fill_status bitmask:
       0 = none filled, 1 = s1 filled, 2 = s2 filled, 3 = both filled.
     If retry_leg is specified, only place the missing leg."""
@@ -184,22 +184,34 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
         qty2 = max(1, int(round(nfo2["lot_size"] * lot_scale)))
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         remarks = f"PT_{direction[:4]}_{clean_s1}_{z_score:.2f}_L{lot_scale:.1f}"
-        # Use higher limit price on retries to improve fill chances
-        limit_mult = 1.0 if retry_leg is None else 2.0
+        
+        # Fetch live bid/ask quotes for both legs
+        q1 = api.get_quotes("NFO", nfo1["trading_symbol"]) if isinstance(api.get_quotes("NFO", nfo1["trading_symbol"]), dict) else {}
+        q2 = api.get_quotes("NFO", nfo2["trading_symbol"]) if isinstance(api.get_quotes("NFO", nfo2["trading_symbol"]), dict) else {}
+        ask1 = float(q1.get("sp1", 0)) if q1 else 0
+        ask2 = float(q2.get("sp1", 0)) if q2 else 0
+        tick1 = float(nfo1.get("tick_size", 0.05))
+        tick2 = float(nfo2.get("tick_size", 0.05))
+        # Use ask price + 1 tick as limit for reliable fill
+        buffer = lambda t: max(t, 0.05)
+        limit1 = round((ask1 + buffer(tick1)) / tick1) * tick1 if ask1 > 0 else nfo1["limit_price"]
+        limit2 = round((ask2 + buffer(tick2)) / tick2) * tick2 if ask2 > 0 else nfo2["limit_price"]
+        # On retries, add extra buffer
+        if retry_leg is not None:
+            limit1 = round((limit1 + tick1 * 2) / tick1) * tick1
+            limit2 = round((limit2 + tick2 * 2) / tick2) * tick2
         
         fill_status = 0
         oid1, oid2 = None, None
         
         if retry_leg != 2:
-            print(f"  {s1}: {nfo1['trading_symbol']} lot={nfo1['lot_size']} strike={nfo1['strike']} limit=₹{nfo1['limit_price']}")
-            p1 = round(nfo1["limit_price"] * limit_mult / nfo1.get("tick_size", 0.05)) * nfo1.get("tick_size", 0.05) or nfo1["limit_price"]
+            print(f"  {s1}: {nfo1['trading_symbol']} bid={q1.get('bp1','?')} ask={q1.get('sp1','?')} limit=₹{limit1:.2f}")
             oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
-                                    exchange="NFO", product_type="M", price_type="LMT", price=p1)
+                                    exchange="NFO", product_type="M", price_type="LMT", price=limit1)
         if retry_leg != 1:
-            print(f"  {s2}: {nfo2['trading_symbol']} lot={nfo2['lot_size']} strike={nfo2['strike']} limit=₹{nfo2['limit_price']}")
-            p2 = round(nfo2["limit_price"] * limit_mult / nfo2.get("tick_size", 0.05)) * nfo2.get("tick_size", 0.05) or nfo2["limit_price"]
+            print(f"  {s2}: {nfo2['trading_symbol']} bid={q2.get('bp1','?')} ask={q2.get('sp1','?')} limit=₹{limit2:.2f}")
             oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
-                                    exchange="NFO", product_type="M", price_type="LMT", price=p2)
+                                    exchange="NFO", product_type="M", price_type="LMT", price=limit2)
         print(f"  Orders placed: oid1={oid1}, oid2={oid2}")
         
         from ganah import order_status
