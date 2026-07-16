@@ -194,15 +194,13 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
         ask2 = float(q2.get("sp1", 0)) if q2 else 0
         tick1 = float(nfo1.get("tick_size", 0.05))
         tick2 = float(nfo2.get("tick_size", 0.05))
-        # Use mid price (avg of bid and ask) rounded to tick size
-        mid1 = (bid1 + ask1) / 2 if bid1 > 0 and ask1 > 0 else nfo1["limit_price"]
-        mid2 = (bid2 + ask2) / 2 if bid2 > 0 and ask2 > 0 else nfo2["limit_price"]
-        limit1 = round(mid1 / tick1) * tick1
-        limit2 = round(mid2 / tick2) * tick2
-        # On retries, add 1 tick buffer above mid to improve fill
+        # Buy at ask (matches best seller) — near-guaranteed fill
+        limit1 = round(ask1 / tick1) * tick1 if ask1 > 0 else nfo1["limit_price"]
+        limit2 = round(ask2 / tick2) * tick2 if ask2 > 0 else nfo2["limit_price"]
+        # On retries, add 1 tick above ask for priority
         if retry_leg is not None:
-            limit1 = round((mid1 + tick1) / tick1) * tick1
-            limit2 = round((mid2 + tick2) / tick2) * tick2
+            limit1 = round((ask1 + tick1) / tick1) * tick1 if ask1 > 0 else nfo1["limit_price"]
+            limit2 = round((ask2 + tick2) / tick2) * tick2 if ask2 > 0 else nfo2["limit_price"]
         
         fill_status = 0
         oid1, oid2 = None, None
@@ -240,7 +238,7 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
 
 
 def _place_pair_exit(s1, s2, direction, reason, z_score):
-    """Close a pair position leg using options (reverse of entry order)."""
+    """Close a pair position using live bid/ask quotes (sell at bid)."""
     api = _get_broker_api()
     if api is None:
         return
@@ -250,27 +248,25 @@ def _place_pair_exit(s1, s2, direction, reason, z_score):
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])
         remarks = f"PT_{reason_short}_{clean_s1}_{z_score:.2f}"
 
-        # Exit s1: sell whatever was bought (PE for SHORT, CE for LONG)
         opt_type1 = "PE" if direction == "SHORT" else "CE"
-        nfo1 = resolve_option_contract(s1, opt_type1, 0)
-        if nfo1:
-            price = round(nfo1["estimated_premium"] * 0.5, 2)
-            place_live_order(nfo1["trading_symbol"], "SHORT", nfo1["lot_size"], remarks,
-                            exchange="NFO", product_type="M", price_type="LMT", price=price)
-            print(f"  Exit order placed: {s1} {nfo1['trading_symbol']}")
-        else:
-            print(f"  Cannot resolve option for exit on {s1} — skipping")
-
-        # Exit s2: sell whatever was bought (CE for SHORT, PE for LONG)
         opt_type2 = "CE" if direction == "SHORT" else "PE"
+        nfo1 = resolve_option_contract(s1, opt_type1, 0)
         nfo2 = resolve_option_contract(s2, opt_type2, 0)
-        if nfo2:
-            price = round(nfo2["estimated_premium"] * 0.5, 2)
-            place_live_order(nfo2["trading_symbol"], "SHORT", nfo2["lot_size"], remarks,
+
+        for label, sym, nfo in [("s1", s1, nfo1), ("s2", s2, nfo2)]:
+            if not nfo:
+                print(f"  Cannot resolve option for exit on {label} — skipping")
+                continue
+            q = api.get_quotes("NFO", nfo["trading_symbol"])
+            if isinstance(q, dict):
+                bid = float(q.get("bp1", 0))
+                tick = float(nfo.get("tick_size", 0.05))
+                price = round(bid / tick) * tick if bid > 0 else round(nfo["estimated_premium"] * 0.5, 2)
+            else:
+                price = round(nfo["estimated_premium"] * 0.5, 2)
+            place_live_order(nfo["trading_symbol"], "SHORT", nfo["lot_size"], remarks,
                             exchange="NFO", product_type="M", price_type="LMT", price=price)
-            print(f"  Exit order placed: {s2} {nfo2['trading_symbol']}")
-        else:
-            print(f"  Cannot resolve option for exit on {s2} — skipping")
+            print(f"  Exit order placed: {nfo['trading_symbol']} at ₹{price}")
     except Exception as e:
         print(f"  Pair exit failed: {e}")
 
