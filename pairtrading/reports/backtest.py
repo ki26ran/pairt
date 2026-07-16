@@ -17,7 +17,8 @@ from common.market_data.cache import get_cache
 THRESHOLDS_FILE = os.path.join(os.path.dirname(DATA_DIR), "configs", "pair_thresholds.json")
 
 def _run_pair_backtest(p1, p2, spread, zscore, hr, l1, l2, lot1, lot2,
-                       entry_z=2.0, exit_z=0.0, o1=None, o2=None):
+                       entry_z=2.0, exit_z=0.0, o1=None, o2=None,
+                       trail_sl_mult=1.5):
     trades = []
     pos = 0
     entry_idx = None
@@ -25,6 +26,7 @@ def _run_pair_backtest(p1, p2, spread, zscore, hr, l1, l2, lot1, lot2,
     use_open = o1 is not None and o2 is not None
     stop_loss_z = entry_z * 3.0
     max_hold_bars = 160
+    best_abs_z = 0
 
     for i in range(1, n):
         prev_z = zscore.iloc[i - 1]
@@ -40,11 +42,14 @@ def _run_pair_backtest(p1, p2, spread, zscore, hr, l1, l2, lot1, lot2,
 
         if pos == 0:
             if prev_z <= -entry_z and curr_z > -entry_z:
-                pos = 1; entry_idx = next_i if use_open else i
+                pos = 1; entry_idx = next_i if use_open else i; best_abs_z = abs(curr_z)
             elif prev_z >= entry_z and curr_z < entry_z:
-                pos = -1; entry_idx = next_i if use_open else i
+                pos = -1; entry_idx = next_i if use_open else i; best_abs_z = abs(curr_z)
 
         elif pos != 0:
+            abs_z = abs(curr_z)
+            if abs_z > best_abs_z:
+                best_abs_z = abs_z
             exit_reason = None
             if pos == 1 and prev_z < exit_z and curr_z >= exit_z:
                 exit_reason = "mean-reversion"
@@ -52,6 +57,8 @@ def _run_pair_backtest(p1, p2, spread, zscore, hr, l1, l2, lot1, lot2,
                 exit_reason = "mean-reversion"
             elif abs(curr_z) >= stop_loss_z:
                 exit_reason = "stop-loss"
+            elif best_abs_z > abs_z + max(exit_z * trail_sl_mult, 1.0):
+                exit_reason = "trail_sl"
             elif (i - entry_idx) >= max_hold_bars:
                 exit_reason = "timeout"
 
@@ -132,7 +139,7 @@ def show():
     with col3:
         max_pairs = st.number_input("Max pairs", min_value=1, max_value=50, value=5)
     with col4:
-        instrument = st.selectbox("Instrument", ["Options (ATM)", "Futures", "Options + Rs40K SL", "Options + Rs50K SL"], index=0)
+        stop_mode = st.selectbox("Stop Mode", ["Fixed SL (3x)", "Trail 1.0x", "Trail 1.5x"], index=2)
 
     # ── Run backtest ───────────────────────────────────────────
     if st.button("Run Backtest", type="primary", use_container_width=True):

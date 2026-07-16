@@ -33,6 +33,7 @@ _SECTOR_CACHE = None  # {symbol_with_NS: sector}
 _cooldowns = {}       # {pair_key: datetime} — stop-loss cooldown (24h)
 _lot_scales = {}      # {pair_key: float} — position size multiplier
 _retry_legs = {}      # {pair_key: dict} — partially filled pairs needing leg retry
+_best_abs_z = {}      # {pair_key: float} — best |z| reached for trailing stop
 
 THRESHOLDS_FILE = os.path.join(BASE_DIR, "configs", "pair_thresholds.json")
 
@@ -40,6 +41,7 @@ MAX_POSITIONS = int(os.environ.get("PT_MAX_POSITIONS", 5))
 ROLL_WIN = 63
 CACHE_MAX_AGE_HOURS = 1
 STOP_LOSS_MULTIPLIER = 2.0
+TRAIL_SL_MULTIPLIER = 1.5   # trailing SL distance = exit_z * TRAIL_SL_MULTIPLIER (min 1.0)
 MAX_HOLD_DAYS = 20
 ENTRY_MIN_DTE = 10   # skip expiries within 10 days for new entries
 ROLL_DTE = 7         # roll existing positions when expiry is within 7 days
@@ -486,16 +488,30 @@ def process_signals(thresholds, raw, pair_cache, mode):
                                 if new_fill & 1:
                                     print(f"  ✅ {s1} leg filled")
                 
+                # Track best |z| for trailing stop
+                abs_z = abs(latest_z)
+                prev_best = _best_abs_z.get(pair_key, abs_z)
+                if abs_z > prev_best:
+                    _best_abs_z[pair_key] = abs_z
+                
                 if direction == "LONG":
                     if latest_z >= exit_z:
                         exit_reason = "mean-reversion"
                     elif latest_z <= -entry_z * STOP_LOSS_MULTIPLIER:
                         exit_reason = "stop-loss"
+                    elif pair_key in _best_abs_z:
+                        trail_dist = max(exit_z * TRAIL_SL_MULTIPLIER, 1.0)
+                        if _best_abs_z[pair_key] > abs_z + trail_dist:
+                            exit_reason = "trail_sl"
                 else:  # SHORT
                     if latest_z <= -exit_z:
                         exit_reason = "mean-reversion"
                     elif latest_z >= entry_z * STOP_LOSS_MULTIPLIER:
                         exit_reason = "stop-loss"
+                    elif pair_key in _best_abs_z:
+                        trail_dist = max(exit_z * TRAIL_SL_MULTIPLIER, 1.0)
+                        if _best_abs_z[pair_key] > abs_z + trail_dist:
+                            exit_reason = "trail_sl"
 
                 if days_held >= MAX_HOLD_DAYS:
                     exit_reason = "timeout"
@@ -508,6 +524,7 @@ def process_signals(thresholds, raw, pair_cache, mode):
                 _place_pair_exit(s1, s2, direction, exit_reason, latest_z)
                 # Close position and record trade
                 ls = _lot_scales.pop(pair_key, 1.0)
+                _best_abs_z.pop(pair_key, None)
                 pair_cache.close_position(pair_key, exit_p1=latest_p1, exit_p2=latest_p2, exit_z=latest_z, exit_reason=exit_reason, lot_scale=ls)
                 _log_signal(pair_cache, s1, s2, latest_p1, latest_p2, latest_z, entry_z, exit_z, f"EXIT {direction} ({exit_reason})", hr)
                 signal = f"EXIT {direction} ({exit_reason})"
