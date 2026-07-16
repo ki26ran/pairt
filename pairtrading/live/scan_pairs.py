@@ -465,14 +465,16 @@ def process_signals(thresholds, raw, pair_cache, mode):
                     if api:
                         _broker_pos = api.get_positions()
                         if isinstance(_broker_pos, list):
+                            s1_clean = s1.replace(".NS", "")
+                            s2_clean = s2.replace(".NS", "")
                             opt1 = "PE" if direction == "SHORT" else "CE"
                             opt2 = "CE" if direction == "SHORT" else "PE"
-                            n1 = resolve_option_contract(s1, opt1, 0)
-                            n2 = resolve_option_contract(s2, opt2, 0)
+                            # Check if broker holds ANY option of the right type for each leg
+                            # (not just exact ATM strike — user may hold different strike)
                             has1 = any(p.get("instname") == "OPTSTK" and int(p.get("netqty", 0)) != 0
-                                       and n1 and p.get("tsym") == n1["trading_symbol"] for p in _broker_pos)
+                                       and s1_clean in p.get("tsym", "") and opt1 in p.get("tsym", "") for p in _broker_pos)
                             has2 = any(p.get("instname") == "OPTSTK" and int(p.get("netqty", 0)) != 0
-                                       and n2 and p.get("tsym") == n2["trading_symbol"] for p in _broker_pos)
+                                       and s2_clean in p.get("tsym", "") and opt2 in p.get("tsym", "") for p in _broker_pos)
                             if has1 and not has2:
                                 print(f"  ⚠️ {s2} {opt2} missing at broker — placing...")
                                 _, _, _, new_fill = _place_pair_order(s1, s2, direction, latest_z, 1.0, retry_leg=2)

@@ -66,14 +66,14 @@ def _pnl(p, live_prices):
         s1 = p["s1"].replace(".NS", "")
         s2 = p["s2"].replace(".NS", "")
         direction = p.get("direction", "LONG")
-        opt1 = "CE" if direction == "LONG" else "PE"
-        opt2 = "PE" if direction == "LONG" else "CE"
+        opt1 = "PE" if direction == "SHORT" else "CE"
+        opt2 = "CE" if direction == "SHORT" else "PE"
         total = 0.0
         for pp in pos:
             if pp.get("instname") != "OPTSTK" or int(pp.get("netqty", 0)) == 0:
                 continue
             tsym = pp.get("tsym", "")
-            # Check if this option belongs to either leg
+            # Match by underlying symbol + option type (any strike/expiry)
             if s1 in tsym and opt1 in tsym:
                 total += float(pp.get("urmtom", 0))
             elif s2 in tsym and opt2 in tsym:
