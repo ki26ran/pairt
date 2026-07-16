@@ -167,25 +167,35 @@ def _place_with_retry(api, trading_symbol, side, qty, remarks, initial_price, ti
     """Place a limit order, wait ~30s, retry tick-by-tick if unfilled (max 3 attempts)."""
     from ganah import place_live_order, order_status
     price = initial_price
+    last_err = ""
     for attempt in range(3):
         oid = place_live_order(trading_symbol, side, qty, remarks,
                                exchange="NFO", product_type="M", price_type="LMT", price=price)
         if not oid:
-            print(f"  Order placement failed for {trading_symbol}")
-            return 0, 0
+            print(f"  ❌ Order placement failed for {trading_symbol} (attempt {attempt+1})")
+            time.sleep(5)
+            continue
         print(f"  Attempt {attempt+1}/3: {trading_symbol} limit=₹{price:.2f} oid={oid}")
         time.sleep(30)
-        filled, avg, _, _ = order_status(oid)
+        filled, avg, _, rej = order_status(oid)
         if filled == 1:
             print(f"  ✅ Filled at ₹{avg}")
             return 1, avg
-        api.cancel_order(oid)
-        print(f"  ⏳ Not filled yet — bumping price by 1 tick...")
+        if rej and rej.strip():
+            last_err = f"rejected: {rej.strip()}"
+        else:
+            last_err = "not filled (no matching offer/bid)"
+        # Cancel unfilled order before retrying at better price
+        try:
+            api.cancel_order(oid)
+        except Exception:
+            pass
+        print(f"  ⏳ {last_err} — bumping price by 1 tick...")
         if is_buy:
             price = round((price + tick_size) / tick_size) * tick_size
         else:
             price = round((price - tick_size) / tick_size) * tick_size
-    print(f"  ❌ Could not fill {trading_symbol} after 3 attempts")
+    print(f"  ❌ Could not fill {trading_symbol} after 3 attempts ({last_err})")
     return 0, 0
 
 
@@ -258,10 +268,12 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
 
 
 def _place_pair_exit(s1, s2, direction, reason, z_score):
-    """Close a pair position using live bid/ask quotes (sell at bid), retry tick-by-tick."""
+    """Close a pair position using live bid/ask quotes (sell at bid), retry tick-by-tick.
+    Returns True if all exit orders were placed successfully, False otherwise."""
     api = _get_broker_api()
     if api is None:
-        return
+        return False
+    all_ok = True
     try:
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO",
@@ -276,6 +288,7 @@ def _place_pair_exit(s1, s2, direction, reason, z_score):
         for label, sym, nfo in [("s1", s1, nfo1), ("s2", s2, nfo2)]:
             if not nfo:
                 print(f"  Cannot resolve option for exit on {label} — skipping")
+                all_ok = False
                 continue
             q = api.get_quotes("NFO", nfo["trading_symbol"])
             if isinstance(q, dict):
@@ -284,10 +297,15 @@ def _place_pair_exit(s1, s2, direction, reason, z_score):
                 price = round(bid / tick) * tick if bid > 0 else round(nfo["estimated_premium"] * 0.5, 2)
             else:
                 price = round(nfo["estimated_premium"] * 0.5, 2)
-            _place_with_retry(api, nfo["trading_symbol"], "SHORT", nfo["lot_size"],
-                              remarks, price, tick, is_buy=False)
+            f, _ = _place_with_retry(api, nfo["trading_symbol"], "SHORT", nfo["lot_size"],
+                                      remarks, price, tick, is_buy=False)
+            if not f:
+                print(f"  ❌ Exit failed for {nfo['trading_symbol']} — will retry next cycle")
+                all_ok = False
     except Exception as e:
         print(f"  Pair exit failed: {e}")
+        return False
+    return all_ok
 
 
 def _eod_already_sent(pair_cache):
@@ -527,23 +545,29 @@ def process_signals(thresholds, raw, pair_cache, mode):
                 if "stop-loss" in exit_reason:
                     _cooldowns[pair_key] = datetime.now()
                 # Place broker exit order if live
-                _place_pair_exit(s1, s2, direction, exit_reason, latest_z)
-                # Close position and record trade
-                ls = _lot_scales.pop(pair_key, 1.0)
-                _best_abs_z.pop(pair_key, None)
-                pair_cache.close_position(pair_key, exit_p1=latest_p1, exit_p2=latest_p2, exit_z=latest_z, exit_reason=exit_reason, lot_scale=ls)
-                _log_signal(pair_cache, s1, s2, latest_p1, latest_p2, latest_z, entry_z, exit_z, f"EXIT {direction} ({exit_reason})", hr)
-                signal = f"EXIT {direction} ({exit_reason})"
-                signals.append({
-                    "Time": latest_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "s1": s1, "s2": s2,
-                    "s1_price": round(latest_p1, 2), "s2_price": round(latest_p2, 2),
-                    "Z-score": round(latest_z, 4),
-                    "Entry Z": entry_z, "Exit Z": exit_z,
-                    "Signal": signal, "hr": hr
-                })
-                # Remove from local open_positions dict so we don't double-close
-                open_positions.pop(pair_key, None)
+                exit_ok = _place_pair_exit(s1, s2, direction, exit_reason, latest_z)
+                if not exit_ok:
+                    print(f"  ⏳ Exit orders not fully placed — will retry next cycle")
+                    # Don't close position in DB — retry next cycle
+                    pair_cache.update_position(pair_key, latest_z, latest_p1, latest_p2)
+                    signal = f"EXIT PENDING ({exit_reason})"
+                    pair_data["Signal"] = signal
+                else:
+                    # Close position and record trade
+                    ls = _lot_scales.pop(pair_key, 1.0)
+                    _best_abs_z.pop(pair_key, None)
+                    pair_cache.close_position(pair_key, exit_p1=latest_p1, exit_p2=latest_p2, exit_z=latest_z, exit_reason=exit_reason, lot_scale=ls)
+                    _log_signal(pair_cache, s1, s2, latest_p1, latest_p2, latest_z, entry_z, exit_z, f"EXIT {direction} ({exit_reason})", hr)
+                    signal = f"EXIT {direction} ({exit_reason})"
+                    signals.append({
+                        "Time": latest_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "s1": s1, "s2": s2,
+                        "s1_price": round(latest_p1, 2), "s2_price": round(latest_p2, 2),
+                        "Z-score": round(latest_z, 4),
+                        "Entry Z": entry_z, "Exit Z": exit_z,
+                        "Signal": signal, "hr": hr
+                    })
+                    open_positions.pop(pair_key, None)
             else:
                 # Update position with latest data
                 pair_cache.update_position(pair_key, latest_z, latest_p1, latest_p2)
@@ -582,19 +606,27 @@ def process_signals(thresholds, raw, pair_cache, mode):
                 lot_scale = 1.0  # fixed 1 lot
                 _lot_scales[pair_key] = lot_scale
                 oid, opt_symbol, expiry_date, fill_status = _place_pair_order(s1, s2, direction, latest_z, lot_scale)
-                if fill_status > 0:
-                    pair_cache.open_position(
-                        pair_key, s1, s2, direction,
-                        latest_z, latest_p1, latest_p2,
-                        entry_z, exit_z, hr,
-                        broker_order_id=oid,
-                        expiry_date=str(expiry_date) if expiry_date else None
-                    )
-                    # If partial fill, mark position for leg retry
-                    if fill_status < 3:
-                        _retry_legs[pair_key] = {"filled": fill_status, "s1": s1, "s2": s2,
-                                                  "direction": direction, "z_score": latest_z,
-                                                  "lot_scale": lot_scale}
+                
+                if fill_status == 0:
+                    print(f"  ❌ Both orders failed for {pair_key} {direction} — will retry next cycle")
+                    signal = f"ENTRY FAILED ({direction})"
+                    pair_data["Signal"] = signal
+                    _log_signal(pair_cache, s1, s2, latest_p1, latest_p2, latest_z, entry_z, exit_z, signal, hr)
+                    pairs_data.append(pair_data)
+                    continue
+                
+                pair_cache.open_position(
+                    pair_key, s1, s2, direction,
+                    latest_z, latest_p1, latest_p2,
+                    entry_z, exit_z, hr,
+                    broker_order_id=oid,
+                    expiry_date=str(expiry_date) if expiry_date else None
+                )
+                # If partial fill, mark position for leg retry
+                if fill_status < 3:
+                    _retry_legs[pair_key] = {"filled": fill_status, "s1": s1, "s2": s2,
+                                              "direction": direction, "z_score": latest_z,
+                                              "lot_scale": lot_scale}
                     signals.append({
                         "Time": latest_time.strftime("%Y-%m-%d %H:%M:%S"),
                         "s1": s1, "s2": s2,
