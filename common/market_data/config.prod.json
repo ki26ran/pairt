@@ -3,7 +3,7 @@
   "os": "linux",
   "config_locked": true,
   "db_path": "../../data/market_data.duckdb",
-  "credential_db": "../../auth/auth.duckdb",
+  "credential_db": "../../lib/ganah/ganah/auth/auth.duckdb",
   "portfolio_providers": {
     "__default__": "shoonya"
   },

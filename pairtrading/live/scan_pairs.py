@@ -176,17 +176,19 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
                 _inst = _p.get("instname", "")
                 if _inst == "OPTSTK" and _net != 0:
                     # Check if this option belongs to either leg
-                    n1 = resolve_option_contract(s1, "PE", 0)
-                    n2 = resolve_option_contract(s2, "CE", 0)
+                    opt1 = "PE" if direction == "SHORT" else "CE"
+                    opt2 = "CE" if direction == "SHORT" else "PE"
+                    n1 = resolve_option_contract(s1, opt1, 0)
+                    n2 = resolve_option_contract(s2, opt2, 0)
                     if n1 and _tsym == n1["trading_symbol"]:
-                        print(f"  SKIP: {s1} PE already held at broker ({_net} qty)")
+                        print(f"  SKIP: {s1} {opt1} already held at broker ({_net} qty)")
                         return None, None, None
                     if n2 and _tsym == n2["trading_symbol"]:
-                        print(f"  SKIP: {s2} CE already held at broker ({_net} qty)")
+                        print(f"  SKIP: {s2} {opt2} already held at broker ({_net} qty)")
                         return None, None, None
         
-        nfo1 = resolve_option_contract(s1, "PE", ENTRY_MIN_DTE)
-        nfo2 = resolve_option_contract(s2, "CE", ENTRY_MIN_DTE)
+        nfo1 = resolve_option_contract(s1, "CE" if direction == "LONG" else "PE", ENTRY_MIN_DTE)
+        nfo2 = resolve_option_contract(s2, "PE" if direction == "LONG" else "CE", ENTRY_MIN_DTE)
         if not nfo1 or not nfo2:
             print(f"  Cannot resolve options for {s1}/{s2} — skipping trade")
             return None, None, None
@@ -227,7 +229,7 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0):
         return None, None, None
 
 
-def _place_pair_exit(s1, direction, reason, z_score):
+def _place_pair_exit(s1, s2, direction, reason, z_score):
     """Close a pair position leg using options (reverse of entry order)."""
     api = _get_broker_api()
     if api is None:
@@ -237,17 +239,30 @@ def _place_pair_exit(s1, direction, reason, z_score):
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])
         remarks = f"PT_{reason_short}_{clean_s1}_{z_score:.2f}"
-        
-        nfo = resolve_option_contract(s1, "PE", 0)
-        if nfo:
-            price = round(nfo["estimated_premium"] * 0.5, 2)  # exit at half premium (conservative)
-            place_live_order(nfo["trading_symbol"], "SHORT", nfo["lot_size"], remarks,
+
+        # Exit s1: sell whatever was bought (PE for SHORT, CE for LONG)
+        opt_type1 = "PE" if direction == "SHORT" else "CE"
+        nfo1 = resolve_option_contract(s1, opt_type1, 0)
+        if nfo1:
+            price = round(nfo1["estimated_premium"] * 0.5, 2)
+            place_live_order(nfo1["trading_symbol"], "SHORT", nfo1["lot_size"], remarks,
                             exchange="NFO", product_type="M", price_type="LMT", price=price)
-            print(f"  Exit order placed: {s1} {nfo['trading_symbol']}")
+            print(f"  Exit order placed: {s1} {nfo1['trading_symbol']}")
         else:
             print(f"  Cannot resolve option for exit on {s1} — skipping")
+
+        # Exit s2: sell whatever was bought (CE for SHORT, PE for LONG)
+        opt_type2 = "CE" if direction == "SHORT" else "PE"
+        nfo2 = resolve_option_contract(s2, opt_type2, 0)
+        if nfo2:
+            price = round(nfo2["estimated_premium"] * 0.5, 2)
+            place_live_order(nfo2["trading_symbol"], "SHORT", nfo2["lot_size"], remarks,
+                            exchange="NFO", product_type="M", price_type="LMT", price=price)
+            print(f"  Exit order placed: {s2} {nfo2['trading_symbol']}")
+        else:
+            print(f"  Cannot resolve option for exit on {s2} — skipping")
     except Exception as e:
-        print(f"  Pair exit failed for {s1}: {e}")
+        print(f"  Pair exit failed: {e}")
 
 
 def _eod_already_sent(pair_cache):
@@ -430,7 +445,7 @@ def process_signals(thresholds, raw, pair_cache, mode):
                 if "stop-loss" in exit_reason:
                     _cooldowns[pair_key] = datetime.now()
                 # Place broker exit order if live
-                _place_pair_exit(s1, direction, exit_reason, latest_z)
+                _place_pair_exit(s1, s2, direction, exit_reason, latest_z)
                 # Close position and record trade
                 ls = _lot_scales.pop(pair_key, 1.0)
                 pair_cache.close_position(pair_key, exit_p1=latest_p1, exit_p2=latest_p2, exit_z=latest_z, exit_reason=exit_reason, lot_scale=ls)
@@ -459,11 +474,17 @@ def process_signals(thresholds, raw, pair_cache, mode):
                 continue
             signal = "NONE"
             if latest_z >= entry_z:
-                # Cooldown check: don't re-enter within 24h of stop-loss
                 if _in_cooldown(pair_key):
                     pair_data["Signal"] = "NONE (cooldown)"
                 else:
                     signal = "ENTRY SHORT"
+                    direction = "SHORT"
+            elif latest_z <= -entry_z:
+                if _in_cooldown(pair_key):
+                    pair_data["Signal"] = "NONE (cooldown)"
+                else:
+                    signal = "ENTRY LONG"
+                    direction = "LONG"
 
             if signal != "NONE" and len(open_positions) < MAX_POSITIONS:
                 # Sector diversification: skip if same-sector position already open
@@ -475,7 +496,6 @@ def process_signals(thresholds, raw, pair_cache, mode):
                         pairs_data.append(pair_data)
                         continue
 
-                direction = "SHORT"
                 lot_scale = 1.0  # fixed 1 lot
                 _lot_scales[pair_key] = lot_scale
                 broker_order_id, opt_symbol, expiry_date = _place_pair_order(s1, s2, direction, latest_z, lot_scale)
