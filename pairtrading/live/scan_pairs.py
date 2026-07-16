@@ -161,6 +161,32 @@ def resolve_option_contract(symbol, option_type, min_dte=ENTRY_MIN_DTE):
         return None
 
 
+def _place_with_retry(api, trading_symbol, side, qty, remarks, initial_price, tick_size, is_buy):
+    """Place a limit order, wait ~30s, retry tick-by-tick if unfilled (max 3 attempts)."""
+    from ganah import place_live_order, order_status
+    price = initial_price
+    for attempt in range(3):
+        oid = place_live_order(trading_symbol, side, qty, remarks,
+                               exchange="NFO", product_type="M", price_type="LMT", price=price)
+        if not oid:
+            print(f"  Order placement failed for {trading_symbol}")
+            return 0, 0
+        print(f"  Attempt {attempt+1}/3: {trading_symbol} limit=₹{price:.2f} oid={oid}")
+        time.sleep(30)
+        filled, avg, _, _ = order_status(oid)
+        if filled == 1:
+            print(f"  ✅ Filled at ₹{avg}")
+            return 1, avg
+        api.cancel_order(oid)
+        print(f"  ⏳ Not filled yet — bumping price by 1 tick...")
+        if is_buy:
+            price = round((price + tick_size) / tick_size) * tick_size
+        else:
+            price = round((price - tick_size) / tick_size) * tick_size
+    print(f"  ❌ Could not fill {trading_symbol} after 3 attempts")
+    return 0, 0
+
+
 def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None):
     """Place a pair entry order using options with live bid/ask quotes.
     Returns (order_id, opt_symbol, expiry, fill_status) where fill_status bitmask:
@@ -206,30 +232,17 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
         oid1, oid2 = None, None
         
         if retry_leg != 2:
-            print(f"  {s1}: {nfo1['trading_symbol']} bid={q1.get('bp1','?')} ask={q1.get('sp1','?')} mid=₹{mid1:.2f} limit=₹{limit1:.2f}")
-            oid1 = place_live_order(nfo1["trading_symbol"], "LONG", qty1, remarks,
-                                    exchange="NFO", product_type="M", price_type="LMT", price=limit1)
-        if retry_leg != 1:
-            print(f"  {s2}: {nfo2['trading_symbol']} bid={q2.get('bp1','?')} ask={q2.get('sp1','?')} mid=₹{mid2:.2f} limit=₹{limit2:.2f}")
-            oid2 = place_live_order(nfo2["trading_symbol"], "LONG", qty2, remarks,
-                                    exchange="NFO", product_type="M", price_type="LMT", price=limit2)
-        print(f"  Orders placed: oid1={oid1}, oid2={oid2}")
-        
-        from ganah import order_status
-        if oid1:
-            f1, _, _, r1 = order_status(oid1)
-            if f1 == 1:
+            print(f"  {s1}: {nfo1['trading_symbol']} bid={q1.get('bp1','?')} ask={q1.get('sp1','?')} limit=₹{limit1:.2f}")
+            f1, ap1 = _place_with_retry(api, nfo1["trading_symbol"], "LONG", qty1, remarks, limit1, tick1, is_buy=True)
+            if f1:
                 fill_status |= 1
-                print(f"  {s1} filled ✅")
-            else:
-                print(f"  {s1} rejected: {r1}")
-        if oid2:
-            f2, _, _, r2 = order_status(oid2)
-            if f2 == 1:
+                print(f"  {s1} filled ✅ at ₹{ap1}")
+        if retry_leg != 1:
+            print(f"  {s2}: {nfo2['trading_symbol']} bid={q2.get('bp1','?')} ask={q2.get('sp1','?')} limit=₹{limit2:.2f}")
+            f2, ap2 = _place_with_retry(api, nfo2["trading_symbol"], "LONG", qty2, remarks, limit2, tick2, is_buy=True)
+            if f2:
                 fill_status |= 2
-                print(f"  {s2} filled ✅")
-            else:
-                print(f"  {s2} rejected: {r2}")
+                print(f"  {s2} filled ✅ at ₹{ap2}")
         
         return (oid1 or oid2, nfo1["trading_symbol"], nfo1["expiry"], fill_status)
     except Exception as e:
@@ -238,12 +251,11 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
 
 
 def _place_pair_exit(s1, s2, direction, reason, z_score):
-    """Close a pair position using live bid/ask quotes (sell at bid)."""
+    """Close a pair position using live bid/ask quotes (sell at bid), retry tick-by-tick."""
     api = _get_broker_api()
     if api is None:
         return
     try:
-        from ganah import place_live_order
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
         reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])
         remarks = f"PT_{reason_short}_{clean_s1}_{z_score:.2f}"
@@ -264,9 +276,8 @@ def _place_pair_exit(s1, s2, direction, reason, z_score):
                 price = round(bid / tick) * tick if bid > 0 else round(nfo["estimated_premium"] * 0.5, 2)
             else:
                 price = round(nfo["estimated_premium"] * 0.5, 2)
-            place_live_order(nfo["trading_symbol"], "SHORT", nfo["lot_size"], remarks,
-                            exchange="NFO", product_type="M", price_type="LMT", price=price)
-            print(f"  Exit order placed: {nfo['trading_symbol']} at ₹{price}")
+            _place_with_retry(api, nfo["trading_symbol"], "SHORT", nfo["lot_size"],
+                              remarks, price, tick, is_buy=False)
     except Exception as e:
         print(f"  Pair exit failed: {e}")
 
