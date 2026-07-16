@@ -40,7 +40,7 @@ THRESHOLDS_FILE = os.path.join(BASE_DIR, "configs", "pair_thresholds.json")
 MAX_POSITIONS = int(os.environ.get("PT_MAX_POSITIONS", 5))
 ROLL_WIN = 63
 CACHE_MAX_AGE_HOURS = 1
-STOP_LOSS_MULTIPLIER = 2.0
+STOP_LOSS_MULTIPLIER = 3.0   # fixed SL at entry_z * 3.0 (matches backtest)
 TRAIL_SL_MULTIPLIER = 1.5   # trailing SL distance = exit_z * TRAIL_SL_MULTIPLIER (min 1.0)
 MAX_HOLD_DAYS = 20
 ENTRY_MIN_DTE = 10   # skip expiries within 10 days for new entries
@@ -214,8 +214,10 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
         remarks = f"PT_{direction[:4]}_{clean_s1}_{z_score:.2f}_L{lot_scale:.1f}"
         
         # Fetch live bid/ask quotes for both legs
-        q1 = api.get_quotes("NFO", nfo1["trading_symbol"]) if isinstance(api.get_quotes("NFO", nfo1["trading_symbol"]), dict) else {}
-        q2 = api.get_quotes("NFO", nfo2["trading_symbol"]) if isinstance(api.get_quotes("NFO", nfo2["trading_symbol"]), dict) else {}
+        _q1 = api.get_quotes("NFO", nfo1["trading_symbol"])
+        _q2 = api.get_quotes("NFO", nfo2["trading_symbol"])
+        q1 = _q1 if isinstance(_q1, dict) else {}
+        q2 = _q2 if isinstance(_q2, dict) else {}
         bid1 = float(q1.get("bp1", 0)) if q1 else 0
         ask1 = float(q1.get("sp1", 0)) if q1 else 0
         bid2 = float(q2.get("bp1", 0)) if q2 else 0
@@ -246,7 +248,10 @@ def _place_pair_order(s1, s2, direction, z_score, lot_scale=1.0, retry_leg=None)
                 fill_status |= 2
                 print(f"  {s2} filled ✅ at ₹{ap2}")
         
-        return (oid1 or oid2, nfo1["trading_symbol"], nfo1["expiry"], fill_status)
+        # Return info from the filled leg(s). Prefer s1 for opt_symbol/expiry.
+        _ret_sym = nfo1["trading_symbol"] if fill_status & 1 else (nfo2["trading_symbol"] if fill_status & 2 else None)
+        _ret_exp = nfo1["expiry"] if fill_status & 1 else (nfo2["expiry"] if fill_status & 2 else None)
+        return (oid1 or oid2, _ret_sym, _ret_exp, fill_status)
     except Exception as e:
         print(f"  Pair order failed: {e}")
         return None, None, None, 0
@@ -259,7 +264,8 @@ def _place_pair_exit(s1, s2, direction, reason, z_score):
         return
     try:
         clean_s1 = s1.replace(".NS", "").replace(".BO", "")
-        reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO"}.get(reason, reason[:3])
+        reason_short = {"mean-reversion": "MR", "stop-loss": "SL", "timeout": "TO",
+                         "trail_sl": "TR", "expiry_roll": "ER"}.get(reason, reason[:3])
         remarks = f"PT_{reason_short}_{clean_s1}_{z_score:.2f}"
 
         opt_type1 = "PE" if direction == "SHORT" else "CE"

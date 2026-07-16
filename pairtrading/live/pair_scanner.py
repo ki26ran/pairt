@@ -54,14 +54,15 @@ def _fetch_live_prices(tickers):
             if (t + ".NS") in closes.index and not pd.isna(closes[t + ".NS"])}
 
 
-def _pnl(p, live_prices):
+def _pnl(p, live_prices, broker_positions=None):
     """Calculate actual P&L from broker option positions (MTM)."""
     try:
-        from ganah import setup_api as _sapi
-        from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
-        api = _sapi(BROKER_NAME, BROKER_USERNAME)
-        pos = api.get_positions()
-        if not isinstance(pos, list):
+        if broker_positions is None:
+            from ganah import setup_api as _sapi
+            from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
+            api = _sapi(BROKER_NAME, BROKER_USERNAME)
+            broker_positions = api.get_positions()
+        if not isinstance(broker_positions, list):
             return 0.0
         s1 = p["s1"].replace(".NS", "")
         s2 = p["s2"].replace(".NS", "")
@@ -148,11 +149,13 @@ def show():
         live_prices = _fetch_live_prices(tickers) if tickers else {}
         # Fetch actual option qty from broker for display
         _broker_qty_map = {}
+        _broker_positions = []
         try:
             from ganah import setup_api as _sapi
             from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
             _ba = _sapi(BROKER_NAME, BROKER_USERNAME)
             _bp = _ba.get_positions()
+            _broker_positions = _bp if isinstance(_bp, list) else []
             if isinstance(_bp, list):
                 for _pp in _bp:
                     if _pp.get("instname") == "OPTSTK" and int(_pp.get("netqty", 0)) != 0:
@@ -164,7 +167,7 @@ def show():
         for k, p in open_pos.items():
             d = "🟢 LONG" if p["direction"] == "LONG" else "🔴 SHORT"
             try:
-                pnl = _pnl(p, live_prices)
+                pnl = _pnl(p, live_prices, _broker_positions)
                 if isinstance(pnl, float) and math.isnan(pnl): pnl = 0.0
             except Exception:
                 pnl = 0.0
