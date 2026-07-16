@@ -188,7 +188,6 @@ def show():
         from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
         _ba = _sapi(BROKER_NAME, BROKER_USERNAME)
         _broker_pos = _ba.get_positions()
-        _pair_th = _gpc().load_thresholds()
         
         if isinstance(_broker_pos, list) and len(_broker_pos) > 0:
             # Group options by pair key
@@ -209,11 +208,11 @@ def show():
                 _rpnl = float(_p.get("rpnl", 0))
                 _total_pnl = _urmtom + _rpnl
                 
-                # Identify pair
+                # Identify pair — match against active positions only
                 _pair_tag = ""
-                for _pk in (_pair_th or {}):
-                    _s1 = _pk.split("|")[0].replace(".NS", "")
-                    _s2 = _pk.split("|")[1].replace(".NS", "")
+                _active_pairs = {(p["s1"].replace(".NS",""), p["s2"].replace(".NS","")) 
+                                 for p in pair_cache.load_positions().values() if p.get("direction")}
+                for _s1, _s2 in _active_pairs:
                     if _s1 in _tsym or _s2 in _tsym:
                         _pair_tag = f"{_s1}/{_s2}"
                         break
