@@ -55,19 +55,32 @@ def _fetch_live_prices(tickers):
 
 
 def _pnl(p, live_prices):
-    import math
-    lot1 = _lot_size(p["s1"].replace(".NS", ""))
-    lot2 = _lot_size(p["s2"].replace(".NS", ""))
-    ep1, ep2 = float(p["entry_p1"]), float(p["entry_p2"])
-    s1 = p["s1"].replace(".NS", "")
-    s2 = p["s2"].replace(".NS", "")
-    cp1 = live_prices.get(s1, p.get("last_p1", ep1))
-    cp2 = live_prices.get(s2, p.get("last_p2", ep2))
-    if isinstance(cp1, float) and math.isnan(cp1): cp1 = ep1
-    if isinstance(cp2, float) and math.isnan(cp2): cp2 = ep2
-    if p["direction"] == "SHORT":
-        return round((ep1 - cp1) * lot1 + (cp2 - ep2) * lot2, 2)
-    return round((cp1 - ep1) * lot1 + (ep2 - cp2) * lot2, 2)
+    """Calculate actual P&L from broker option positions (MTM)."""
+    try:
+        from ganah import setup_api as _sapi
+        from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
+        api = _sapi(BROKER_NAME, BROKER_USERNAME)
+        pos = api.get_positions()
+        if not isinstance(pos, list):
+            return 0.0
+        s1 = p["s1"].replace(".NS", "")
+        s2 = p["s2"].replace(".NS", "")
+        direction = p.get("direction", "LONG")
+        opt1 = "CE" if direction == "LONG" else "PE"
+        opt2 = "PE" if direction == "LONG" else "CE"
+        total = 0.0
+        for pp in pos:
+            if pp.get("instname") != "OPTSTK" or int(pp.get("netqty", 0)) == 0:
+                continue
+            tsym = pp.get("tsym", "")
+            # Check if this option belongs to either leg
+            if s1 in tsym and opt1 in tsym:
+                total += float(pp.get("urmtom", 0))
+            elif s2 in tsym and opt2 in tsym:
+                total += float(pp.get("urmtom", 0))
+        return round(total, 2)
+    except Exception:
+        return 0.0
 
 
 def _icon(row):
@@ -133,6 +146,19 @@ def show():
         tickers = list(set([p["s1"].replace(".NS", "") for p in open_pos.values()] +
                            [p["s2"].replace(".NS", "") for p in open_pos.values()]))
         live_prices = _fetch_live_prices(tickers) if tickers else {}
+        # Fetch actual option qty from broker for display
+        _broker_qty_map = {}
+        try:
+            from ganah import setup_api as _sapi
+            from pairtrading.configs.settings import BROKER_NAME, BROKER_USERNAME
+            _ba = _sapi(BROKER_NAME, BROKER_USERNAME)
+            _bp = _ba.get_positions()
+            if isinstance(_bp, list):
+                for _pp in _bp:
+                    if _pp.get("instname") == "OPTSTK" and int(_pp.get("netqty", 0)) != 0:
+                        _broker_qty_map[_pp["tsym"]] = abs(int(_pp["netqty"]))
+        except Exception:
+            pass
         rows = []
         total_pnl = 0.0
         for k, p in open_pos.items():
@@ -146,6 +172,8 @@ def show():
             s1 = p["s1"].replace(".NS", "")
             s2 = p["s2"].replace(".NS", "")
             is_short = p["direction"] == "SHORT"
+            opt_type1 = "PE" if is_short else "CE"
+            opt_type2 = "CE" if is_short else "PE"
             entry_z = float(p.get("entry_z_threshold", 2.0))
             sl_z = round(entry_z * 3, 1)
             entry_date_str = p.get("entry_date", "")
@@ -156,12 +184,17 @@ def show():
                 except Exception:
                     pass
             remaining_days = max(0, 20 - days_held)
+            # Get actual option qty from broker for display
+            _get_qty = lambda sym, opt_type: next((q for tsym, q in _broker_qty_map.items() 
+                                                     if sym.replace(".NS","") in tsym and opt_type in tsym), _lot_size(sym))
+            lot1_actual = _get_qty(s1, opt_type1)
+            lot2_actual = _get_qty(s2, opt_type2)
             rows.append({
                 "Dir": d,
                 "s1": f"{s1} 🔴 Short" if is_short else f"{s1} 🟢 Long",
                 "s2": f"{s2} 🟢 Long" if is_short else f"{s2} 🔴 Short",
-                "Lot1": _lot_size(s1),
-                "Lot2": _lot_size(s2),
+                "Qty1": lot1_actual,
+                "Qty2": lot2_actual,
                 "Entry": p.get("entry_date", ""),
                 "P1 LTP": live_prices.get(s1, p.get("last_p1", "-")),
                 "P2 LTP": live_prices.get(s2, p.get("last_p2", "-")),
