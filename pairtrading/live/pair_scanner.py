@@ -415,7 +415,7 @@ def show():
 
         with st.spinner("Loading chart data..."):
             end_dt = datetime.now()
-            start_dt = end_dt - timedelta(days=10)
+            start_dt = end_dt - timedelta(days=30)
             cache = get_cache()
             df = cache.get_bulk_multiindex([s1, s2], start_dt.strftime('%Y-%m-%d'),
                                             end_dt.strftime('%Y-%m-%d'), interval='1h')
@@ -438,7 +438,7 @@ def show():
                 idx = c1.index.tz_convert("Asia/Kolkata").tz_localize(None)
                 c1.index = idx; c2.index = idx
 
-                if len(c1) > 20:
+                if len(c1) > 10:
                     p1s, p2s = c1, c2
                     spread = p1s - hr * p2s
                     sm = spread.rolling(63, min_periods=1).mean()
